@@ -2720,11 +2720,16 @@ function hideTyping(){ const el = document.getElementById('typingRow'); if(el) e
    AI Agent：讓聊天不只是建議，AI 可以直接幫使用者新增資料
    ============================================================ */
 function extractAgentAction(text){
-  const match = text.match(/\[\[AGENT_ACTION\]\]([\s\S]*?)\[\[\/AGENT_ACTION\]\]/);
-  if(!match) return { cleanText: text, action: null };
-  const cleanText = text.replace(match[0], '').trim();
+  const openTag = '[[AGENT_ACTION]]';
+  const closeTag = '[[/AGENT_ACTION]]';
+  const openIdx = text.indexOf(openTag);
+  if(openIdx === -1) return { cleanText: text, action: null };
+  const cleanText = text.slice(0, openIdx).trim();
+  const afterOpen = text.slice(openIdx + openTag.length);
+  const closeIdx = afterOpen.indexOf(closeTag);
+  const raw = closeIdx > -1 ? afterOpen.slice(0, closeIdx) : afterOpen; // 就算沒抓到結束標籤，也不讓原始文字露出去
   let action = null;
-  try{ action = JSON.parse(match[1].trim()); }catch(e){ action = null; }
+  try{ action = JSON.parse(raw.trim()); }catch(e){ action = null; }
   return { cleanText, action };
 }
 function clickChipByValue(containerId, value){
@@ -2828,7 +2833,11 @@ async function sendChatMessage(){
     hideTyping();
     const reply = data.reply || (data.choices && data.choices[0] && data.choices[0].message && data.choices[0].message.content) || '（沒有收到有效回覆，請確認中繼服務設定是否正確）';
     const { cleanText, action } = extractAgentAction(reply);
-    addChatMessage('assistant', cleanText || reply);
+    if(cleanText){
+      addChatMessage('assistant', cleanText);
+    } else if(!action){
+      addChatMessage('assistant', '抱歉，這次沒能完整處理這個請求，能不能麻煩你換個方式再說一次，或直接手動新增？');
+    }
     if(action) confirmAgentAction(action);
   }catch(e){
     hideTyping();

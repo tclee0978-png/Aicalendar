@@ -911,6 +911,22 @@ function bindEventRowClicks(container){
 function escapeHtml(s){ return (s||'').replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
 
 /* ============================================================
+   行程衝突檢查：同一天時間太接近（預設 30 分鐘內）視為衝突
+   ============================================================ */
+const CONFLICT_BUFFER_MINUTES = 30;
+function checkEventConflict(candidate){
+  if(!candidate.date || !candidate.time) return [];
+  const candidateDt = new Date(candidate.date+'T'+candidate.time);
+  return state.events.filter(other=>{
+    if(other.id === candidate.id) return false;
+    if(other.done) return false;
+    if(other.date !== candidate.date || !other.time) return false;
+    const otherDt = new Date(other.date+'T'+other.time);
+    return Math.abs(candidateDt - otherDt) / 60000 < CONFLICT_BUFFER_MINUTES;
+  });
+}
+
+/* ============================================================
    Google Maps 導航：單點導航 + 今日多站路線（機車／汽車切換）
    免申請 API Key，使用 Google 官方公開的深層連結網址
    ============================================================ */
@@ -1205,6 +1221,7 @@ function openEventSheet(ev, presetDate){
     <div class="field"><label>分類</label><div class="chip-group" id="f_cat">${getEventCats().map(c=>`<span class="chip ${c===ev.category?'active':''}" data-v="${c}">${c}</span>`).join('')}</div></div>
     <div class="field"><label>提醒時間</label><div class="chip-group" id="f_rem">${REMINDER_OPTS.map(r=>`<span class="chip ${r.v===ev.reminder?'active':''}" data-v="${r.v}">${r.l}</span>`).join('')}</div></div>
     <div class="field"><label>備註</label><textarea id="f_note" placeholder="補充說明...">${escapeHtml(ev.note)}</textarea></div>
+    <div id="f_conflict_warning" style="display:none;background:rgba(255,90,90,.12);border:1px solid rgba(255,90,90,.4);border-radius:12px;padding:10px 12px;font-size:12.5px;color:#ff8fa0;margin-bottom:12px;line-height:1.6;"></div>
     <div class="btn-row">
       ${isEdit?'<button class="btn btn-danger" id="f_del">刪除</button>':''}
       <button class="btn btn-primary" id="f_save">${isEdit?'儲存變更':'新增行程'}</button>
@@ -1214,18 +1231,42 @@ function openEventSheet(ev, presetDate){
   document.getElementById('f_address_paste').onclick = ()=> pasteFromClipboard('f_address');
   loadGoogleMapsScript(()=> attachAddressAutocomplete(document.getElementById('f_address')));
   let chosenCat = ev.category, chosenRem = ev.reminder;
+  let conflictAcknowledged = false;
+  const resetConflictState = ()=>{
+    conflictAcknowledged = false;
+    document.getElementById('f_conflict_warning').style.display = 'none';
+    document.getElementById('f_save').textContent = isEdit ? '儲存變更' : '新增行程';
+  };
+  document.getElementById('f_date').addEventListener('input', resetConflictState);
+  document.getElementById('f_time').addEventListener('input', resetConflictState);
   document.getElementById('f_cat').onclick = e=>{ const c=e.target.closest('.chip'); if(!c)return; chosenCat=c.dataset.v; setActiveChip('f_cat',chosenCat); };
   document.getElementById('f_rem').onclick = e=>{ const c=e.target.closest('.chip'); if(!c)return; chosenRem=c.dataset.v; setActiveChip('f_rem',chosenRem); };
   document.getElementById('f_save').onclick = ()=>{
     const title = document.getElementById('f_title').value.trim();
     if(!title){ toast('請輸入標題'); return; }
-    ev.title = title; ev.date = document.getElementById('f_date').value;
-    ev.time = document.getElementById('f_time').value; ev.category = chosenCat;
-    ev.address = document.getElementById('f_address').value.trim();
-    ev.reminder = chosenRem; ev.note = document.getElementById('f_note').value.trim();
-    ev.notified = false;
-    const idx = state.events.findIndex(x=>x.id===ev.id);
-    if(idx>-1) state.events[idx]=ev; else state.events.push(ev);
+    const candidate = {
+      ...ev, title,
+      date: document.getElementById('f_date').value,
+      time: document.getElementById('f_time').value,
+      category: chosenCat,
+      address: document.getElementById('f_address').value.trim(),
+      reminder: chosenRem,
+      note: document.getElementById('f_note').value.trim(),
+      notified: false,
+    };
+    if(!conflictAcknowledged){
+      const conflicts = checkEventConflict(candidate);
+      if(conflicts.length){
+        const warnBox = document.getElementById('f_conflict_warning');
+        warnBox.innerHTML = '⚠️ 這個時間跟以下行程太接近：<br>' + conflicts.map(c=>`${c.time||''} ${escapeHtml(c.title)}`).join('<br>');
+        warnBox.style.display = 'block';
+        document.getElementById('f_save').textContent = '⚠️ 仍要儲存';
+        conflictAcknowledged = true;
+        return;
+      }
+    }
+    const idx = state.events.findIndex(x=>x.id===candidate.id);
+    if(idx>-1) state.events[idx]=candidate; else state.events.push(candidate);
     saveState(); closeSheet(); toast('已儲存行程'); refreshAll();
   };
   if(isEdit){

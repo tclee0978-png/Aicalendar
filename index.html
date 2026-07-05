@@ -8,6 +8,7 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="AI秘書">
 <title>AI 秘書 · 行事曆 & 記帳</title>
+<script src="https://accounts.google.com/gsi/client" async defer></script>
 <style>
 /* ============================================================
    設計 Token：深藍黑背景 + 藍色霓虹光 + 白色柔光，韓系科技感
@@ -384,6 +385,24 @@ body{
 .chat-empty-hint{
   text-align:center; color:var(--text-2); font-size:12.5px; margin-top:30px; line-height:1.8;
 }
+
+/* 導航按鈕 */
+.li-nav-btn{
+  width:34px;height:34px;border-radius:10px;flex-shrink:0;
+  background:rgba(78,168,255,.15); border:1px solid rgba(78,168,255,.35);
+  display:flex;align-items:center;justify-content:center; font-size:16px; margin-left:6px;
+}
+
+/* 地址欄位輔助按鈕（語音輸入 / 貼上剪貼簿） */
+.field-icon-btn{
+  width:44px;height:44px;border-radius:12px;flex-shrink:0;
+  background:var(--bg-1); border:1px solid var(--line); color:var(--text-0);
+  display:flex;align-items:center;justify-content:center; font-size:17px;
+}
+.field-icon-btn.listening-mini{
+  background:rgba(255,90,90,.18); border-color:rgba(255,90,90,.5);
+  animation:pulseMic 1.1s infinite;
+}
 </style>
 </head>
 <body>
@@ -419,6 +438,17 @@ body{
         <div class="finance-box"><div class="label">本月收入</div><div class="num income" id="mIncome">$0</div></div>
         <div class="finance-box"><div class="label">本月支出</div><div class="num expense" id="mExpense">$0</div></div>
         <div class="finance-box"><div class="label">本月結餘</div><div class="num balance" id="mBalance">$0</div></div>
+      </div>
+    </div>
+
+    <div class="section">
+      <div class="section-title">今日路線規劃</div>
+      <div class="card" style="padding:16px;">
+        <div class="chip-group" id="travelModeChips" style="margin-bottom:12px;">
+          <span class="chip" data-v="driving">🚗 汽車</span>
+          <span class="chip" data-v="two-wheeler">🏍 機車</span>
+        </div>
+        <button class="btn btn-primary" style="width:100%;" id="planRouteBtn">🗺 開始導航今日路線</button>
       </div>
     </div>
 
@@ -555,6 +585,19 @@ body{
         <div class="btn-row">
           <input id="newIncomeCat" placeholder="新增收入分類...">
           <button class="btn btn-ghost" id="addIncomeCatBtn" style="flex:0 0 52px;">＋</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="section">
+      <div class="section-title">地址自動完成（選填）</div>
+      <div class="card" style="padding:16px;">
+        <div class="field" style="margin-bottom:10px;">
+          <label>Google Maps API Key</label>
+          <input id="mapsApiKeyInput" type="text" placeholder="貼上你的 Google Maps API Key">
+        </div>
+        <div class="pwa-hint">
+          填了之後，新增行程的地址欄位打字時會自動跳出建議清單。不填也沒關係，還是可以用語音輸入或貼上剪貼簿。
         </div>
       </div>
     </div>
@@ -713,6 +756,9 @@ if(!state.settings.expenseCats || !state.settings.expenseCats.length) state.sett
 if(!state.settings.incomeCats || !state.settings.incomeCats.length) state.settings.incomeCats = [...DEFAULT_INCOME_CATS];
 if(state.settings.incomeGoal===undefined || state.settings.incomeGoal===null) state.settings.incomeGoal = 0;
 if(state.settings.gptEndpoint===undefined) state.settings.gptEndpoint = '';
+if(state.settings.lastGoogleSync===undefined) state.settings.lastGoogleSync = null;
+if(!state.settings.travelMode) state.settings.travelMode = 'driving';
+if(state.settings.mapsApiKey===undefined) state.settings.mapsApiKey = '';
 if(!Array.isArray(state.chatHistory)) state.chatHistory = [];
 saveState();
 function getEventCats(){ return state.settings.eventCats; }
@@ -803,6 +849,7 @@ function sumTx(list, type){ return list.filter(t=>t.type===type).reduce((s,t)=>s
 
 function renderToday(){
   renderTopDate();
+  renderTravelModeChips();
   const t = todayStr();
   // 今日行程
   const todays = state.events.filter(e=>e.date===t).sort((a,b)=> (a.time||'').localeCompare(b.time||''));
@@ -834,21 +881,138 @@ function renderToday(){
 }
 
 function eventRowHTML(e){
+  const navBtn = e.address ? `<div class="li-nav-btn" data-nav-id="${e.id}" title="導航">🧭</div>` : '';
   return `<div class="list-item" data-id="${e.id}" data-type="event">
     <div class="tag-dot" style="background:${catColor(e.category)}"></div>
-    <div>
+    <div style="flex:1;">
       <div class="li-title">${escapeHtml(e.title)}</div>
       <div class="li-sub">${e.category} · ${reminderLabel(e.reminder)}提醒${e.note?(' · '+escapeHtml(e.note)):''}</div>
+      ${e.address?`<div class="li-sub" style="color:var(--neon-2);">📍 ${escapeHtml(e.address)}</div>`:''}
     </div>
     <div class="li-time">${e.time||'--:--'}<br><span style="font-size:10px;color:var(--text-2);">${e.date.slice(5)}</span></div>
+    ${navBtn}
   </div>`;
 }
 function bindEventRowClicks(container){
   container.querySelectorAll('.list-item').forEach(el=>{
-    el.onclick = ()=> openEventSheet(state.events.find(x=>x.id===el.dataset.id));
+    el.onclick = (evt)=>{
+      if(evt.target.closest('.li-nav-btn')) return;
+      openEventSheet(state.events.find(x=>x.id===el.dataset.id));
+    };
+  });
+  container.querySelectorAll('.li-nav-btn').forEach(btn=>{
+    btn.onclick = (evt)=>{
+      evt.stopPropagation();
+      const found = state.events.find(x=>x.id===btn.dataset.navId);
+      if(found) navigateToEvent(found);
+    };
   });
 }
 function escapeHtml(s){ return (s||'').replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+
+/* ============================================================
+   Google Maps 導航：單點導航 + 今日多站路線（機車／汽車切換）
+   免申請 API Key，使用 Google 官方公開的深層連結網址
+   ============================================================ */
+function buildNavUrl({ destination, waypoints, mode }){
+  const params = new URLSearchParams();
+  params.set('api', '1');
+  params.set('destination', destination);
+  if(waypoints && waypoints.length) params.set('waypoints', waypoints.join('|'));
+  params.set('travelmode', mode || 'driving');
+  // 沒有指定 origin 時，Google Maps App 會自動使用裝置目前位置當起點
+  return 'https://www.google.com/maps/dir/?' + params.toString();
+}
+function navigateToEvent(ev){
+  if(!ev.address){ toast('這筆行程沒有填地址'); return; }
+  const mode = state.settings.travelMode || 'driving';
+  window.open(buildNavUrl({ destination: ev.address, mode }), '_blank');
+}
+function planTodayRoute(){
+  const mode = state.settings.travelMode || 'driving';
+  const t = todayStr();
+  const todays = state.events
+    .filter(e=>e.date===t && e.address)
+    .sort((a,b)=>(a.time||'').localeCompare(b.time||''));
+  if(!todays.length){ toast('今天還沒有填地址的行程，先去行程加上地址吧'); return; }
+  const dest = todays[todays.length-1].address;
+  const waypoints = todays.slice(0, -1).map(e=>e.address);
+  window.open(buildNavUrl({ destination: dest, waypoints, mode }), '_blank');
+}
+function renderTravelModeChips(){
+  const mode = state.settings.travelMode || 'driving';
+  document.querySelectorAll('#travelModeChips .chip').forEach(c=> c.classList.toggle('active', c.dataset.v===mode));
+}
+document.getElementById('travelModeChips').onclick = (e)=>{
+  const c = e.target.closest('.chip'); if(!c) return;
+  state.settings.travelMode = c.dataset.v; saveState(); renderTravelModeChips();
+};
+document.getElementById('planRouteBtn').onclick = planTodayRoute;
+
+/* ============================================================
+   地址輸入輔助：① 單欄位語音輸入 ② 貼上剪貼簿 ③ Google 地址自動完成
+   ============================================================ */
+// ① 針對單一輸入框做語音輸入（跟主要的語音記帳/記行程是分開的辨識實例，避免互相干擾）
+function startFieldDictation(inputId, btnEl){
+  const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+  if(!SR){ toast('此瀏覽器不支援語音輸入'); return; }
+  const rec = new SR();
+  rec.lang = 'zh-TW'; rec.continuous = false; rec.interimResults = false;
+  if(btnEl) btnEl.classList.add('listening-mini');
+  rec.onresult = (e)=>{
+    const text = e.results[0][0].transcript;
+    const input = document.getElementById(inputId);
+    if(input) input.value = text;
+  };
+  rec.onerror = ()=>{ toast('語音辨識失敗，請再試一次'); };
+  rec.onend = ()=>{ if(btnEl) btnEl.classList.remove('listening-mini'); };
+  try{ rec.start(); }catch(e){ if(btnEl) btnEl.classList.remove('listening-mini'); }
+}
+
+// ② 從剪貼簿貼上（例如客戶在 LINE 傳地址過來，複製後直接貼進來）
+async function pasteFromClipboard(inputId){
+  try{
+    const text = await navigator.clipboard.readText();
+    if(!text || !text.trim()){ toast('剪貼簿是空的'); return; }
+    document.getElementById(inputId).value = text.trim();
+    toast('已貼上');
+  }catch(e){
+    toast('無法讀取剪貼簿，請確認瀏覽器權限，或改用長按輸入框手動貼上');
+  }
+}
+
+// ③ Google 地址自動完成：需要在設定頁填寫 Google Maps API Key 才會啟用，沒填就安靜略過
+let mapsScriptLoaded = false;
+let mapsScriptLoading = false;
+function loadGoogleMapsScript(callback){
+  const key = state.settings.mapsApiKey;
+  if(!key) return; // 沒設定 Key 就不啟用自動完成，其他輸入方式仍正常運作
+  if(mapsScriptLoaded){ callback(); return; }
+  if(mapsScriptLoading){
+    const iv = setInterval(()=>{ if(mapsScriptLoaded){ clearInterval(iv); callback(); } }, 200);
+    return;
+  }
+  mapsScriptLoading = true;
+  const script = document.createElement('script');
+  script.src = `https://maps.googleapis.com/maps/api/js?key=${encodeURIComponent(key)}&libraries=places&language=zh-TW&region=TW`;
+  script.async = true;
+  script.onload = ()=>{ mapsScriptLoaded = true; mapsScriptLoading = false; callback(); };
+  script.onerror = ()=>{ mapsScriptLoading = false; toast('Google Maps 載入失敗，請確認設定頁的 API Key 是否正確'); };
+  document.head.appendChild(script);
+}
+function attachAddressAutocomplete(inputEl){
+  if(!inputEl || inputEl._autocompleteAttached) return;
+  if(!(window.google && google.maps && google.maps.places)) return;
+  const ac = new google.maps.places.Autocomplete(inputEl, {
+    fields: ['formatted_address'],
+    componentRestrictions: { country: 'tw' },
+  });
+  ac.addListener('place_changed', ()=>{
+    const place = ac.getPlace();
+    if(place && place.formatted_address) inputEl.value = place.formatted_address;
+  });
+  inputEl._autocompleteAttached = true;
+}
 
 /* ============================================================
    機器人提示邏輯
@@ -938,13 +1102,21 @@ document.getElementById('addEventBtn').onclick = ()=> openEventSheet(null, selec
 /* ---- 事件新增/編輯 Sheet ---- */
 function openEventSheet(ev, presetDate){
   const isEdit = !!ev;
-  ev = ev || { id:uid(), title:'', date:presetDate||todayStr(), time:'09:00', category:'工作', note:'', reminder:'onTime', done:false, notified:false };
+  ev = ev || { id:uid(), title:'', date:presetDate||todayStr(), time:'09:00', category:'工作', note:'', address:'', reminder:'onTime', done:false, notified:false };
   const html = `
     <div class="sheet-handle"></div>
     <div class="sheet-title">${isEdit?'編輯行程':'新增行程'}</div>
     <div class="field"><label>標題</label><input id="f_title" value="${escapeHtml(ev.title)}" placeholder="例如：跟客戶吃飯"></div>
     <div class="field"><label>日期</label><input id="f_date" type="date" value="${ev.date}"></div>
     <div class="field"><label>時間</label><input id="f_time" type="time" value="${ev.time}"></div>
+    <div class="field">
+      <label>地址（選填，填了才能一鍵導航）</label>
+      <div style="display:flex; gap:8px;">
+        <input id="f_address" style="flex:1;" value="${escapeHtml(ev.address||'')}" placeholder="例如：台北市信義區松高路1號">
+        <button type="button" class="field-icon-btn" id="f_address_mic" title="語音輸入地址">🎙️</button>
+        <button type="button" class="field-icon-btn" id="f_address_paste" title="貼上剪貼簿">📋</button>
+      </div>
+    </div>
     <div class="field"><label>分類</label><div class="chip-group" id="f_cat">${getEventCats().map(c=>`<span class="chip ${c===ev.category?'active':''}" data-v="${c}">${c}</span>`).join('')}</div></div>
     <div class="field"><label>提醒時間</label><div class="chip-group" id="f_rem">${REMINDER_OPTS.map(r=>`<span class="chip ${r.v===ev.reminder?'active':''}" data-v="${r.v}">${r.l}</span>`).join('')}</div></div>
     <div class="field"><label>備註</label><textarea id="f_note" placeholder="補充說明...">${escapeHtml(ev.note)}</textarea></div>
@@ -953,6 +1125,9 @@ function openEventSheet(ev, presetDate){
       <button class="btn btn-primary" id="f_save">${isEdit?'儲存變更':'新增行程'}</button>
     </div>`;
   openSheet(html);
+  document.getElementById('f_address_mic').onclick = (btnEvt)=> startFieldDictation('f_address', btnEvt.currentTarget);
+  document.getElementById('f_address_paste').onclick = ()=> pasteFromClipboard('f_address');
+  loadGoogleMapsScript(()=> attachAddressAutocomplete(document.getElementById('f_address')));
   let chosenCat = ev.category, chosenRem = ev.reminder;
   document.getElementById('f_cat').onclick = e=>{ const c=e.target.closest('.chip'); if(!c)return; chosenCat=c.dataset.v; setActiveChip('f_cat',chosenCat); };
   document.getElementById('f_rem').onclick = e=>{ const c=e.target.closest('.chip'); if(!c)return; chosenRem=c.dataset.v; setActiveChip('f_rem',chosenRem); };
@@ -961,6 +1136,7 @@ function openEventSheet(ev, presetDate){
     if(!title){ toast('請輸入標題'); return; }
     ev.title = title; ev.date = document.getElementById('f_date').value;
     ev.time = document.getElementById('f_time').value; ev.category = chosenCat;
+    ev.address = document.getElementById('f_address').value.trim();
     ev.reminder = chosenRem; ev.note = document.getElementById('f_note').value.trim();
     ev.notified = false;
     const idx = state.events.findIndex(x=>x.id===ev.id);
@@ -969,6 +1145,7 @@ function openEventSheet(ev, presetDate){
   };
   if(isEdit){
     document.getElementById('f_del').onclick = ()=>{
+      googleDeleteEvent(ev);
       state.events = state.events.filter(x=>x.id!==ev.id);
       saveState(); closeSheet(); toast('已刪除行程'); refreshAll();
     };
@@ -1455,7 +1632,13 @@ function renderCatManager(){
   renderCatMgrGroup('mgrIncomeCats', getIncomeCats(), 'incomeCats');
   document.getElementById('incomeGoalInput').value = state.settings.incomeGoal || '';
   document.getElementById('gptEndpointInput').value = state.settings.gptEndpoint || '';
+  document.getElementById('mapsApiKeyInput').value = state.settings.mapsApiKey || '';
+  if(typeof updateGcalStatusUI === 'function') updateGcalStatusUI();
 }
+document.getElementById('mapsApiKeyInput').addEventListener('change', e=>{
+  state.settings.mapsApiKey = e.target.value.trim();
+  saveState(); toast('已儲存 Maps API Key');
+});
 document.getElementById('gptEndpointInput').addEventListener('change', e=>{
   state.settings.gptEndpoint = e.target.value.trim();
   saveState(); toast('已儲存中繼服務網址');
@@ -1489,22 +1672,115 @@ document.getElementById('incomeGoalInput').addEventListener('change', e=>{
   saveState(); refreshAll();
 });
 
-/* ---- Google 行事曆連動（前端預留函式，正式上線串接 Google Calendar API） ---- */
+/* ============================================================
+   Google 行事曆連動：用 Google Identity Services 取得授權，
+   直接在瀏覽器呼叫 Google Calendar API（此 API 允許瀏覽器直接呼叫，不需要 Worker）
+   ============================================================ */
+const GOOGLE_CLIENT_ID = '153426969569-7ijpqvuroffu18njdirvu32t5tovo614.apps.googleusercontent.com';
+const GOOGLE_CALENDAR_SCOPE = 'https://www.googleapis.com/auth/calendar.events';
+let googleTokenClient = null;
+let googleAccessToken = null;
+
+function updateGcalStatusUI(){
+  const statusEl = document.getElementById('gcalStatus');
+  const btn = document.getElementById('connectGoogleBtn');
+  if(!statusEl || !btn) return;
+  if(state.settings.googleConnected){
+    const last = state.settings.lastGoogleSync ? new Date(state.settings.lastGoogleSync).toLocaleString('zh-TW') : '尚未同步過';
+    statusEl.textContent = '已連線・上次同步：' + last;
+    btn.textContent = '立即重新同步';
+  } else {
+    statusEl.textContent = '尚未連線';
+    btn.textContent = '連接 Google 行事曆';
+  }
+}
+
+function ensureGoogleTokenClient(onReady){
+  if(!(window.google && google.accounts && google.accounts.oauth2)){
+    toast('Google 登入元件還在載入，請稍等 1-2 秒再按一次');
+    return;
+  }
+  if(!googleTokenClient){
+    googleTokenClient = google.accounts.oauth2.initTokenClient({
+      client_id: GOOGLE_CLIENT_ID,
+      scope: GOOGLE_CALENDAR_SCOPE,
+      callback: (resp)=>{
+        if(resp.error){ toast('Google 授權失敗：'+resp.error); return; }
+        googleAccessToken = resp.access_token;
+        state.settings.googleConnected = true; saveState();
+        onReady();
+      }
+    });
+  }
+  googleTokenClient.requestAccessToken({ prompt: googleAccessToken ? '' : 'consent' });
+}
+
 function syncGoogleCalendar(){
-  // TODO: 正式上線時，於此處導向 Google OAuth 流程，取得 access token 後
-  // 呼叫 Google Calendar API (https://www.googleapis.com/calendar/v3/) 進行雙向同步。
-  // 需要：1) Google Cloud Console 建立 OAuth Client ID
-  //       2) 後端保存/更新 refresh token
-  //       3) 將 state.events 與 Google Calendar events 進行合併/去重
-  openSheet(`
-    <div class="sheet-handle"></div>
-    <div class="sheet-title">連接 Google 行事曆</div>
-    <p style="font-size:13.5px;color:var(--text-1);line-height:1.7;">
-      此功能需要 Google OAuth Client ID 與後端 API，正式上線時可串接 Google Calendar API。
-      目前為前端預留介面，之後可直接呼叫 <code>syncGoogleCalendar()</code> 串接完成同步邏輯。
-    </p>
-    <button class="btn btn-ghost" style="width:100%;" onclick="closeSheet()">了解，先關閉</button>
-  `);
+  ensureGoogleTokenClient(()=> performGoogleSync());
+}
+
+async function performGoogleSync(){
+  toast('連線中，正在同步 Google 行事曆...');
+  try{
+    // 1) 把本地還沒同步過的行程（沒有 googleEventId）匯出到 Google
+    const toExport = state.events.filter(e=>!e.googleEventId);
+    for(const ev of toExport){
+      const startDt = new Date(ev.date+'T'+(ev.time||'09:00')+':00');
+      const endDt = new Date(startDt.getTime()+30*60000);
+      const res = await fetch('https://www.googleapis.com/calendar/v3/calendars/primary/events', {
+        method: 'POST',
+        headers: { 'Authorization': 'Bearer '+googleAccessToken, 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          summary: ev.title,
+          description: (ev.note||'') + `\n[來自 AI 秘書・分類:${ev.category}]`,
+          start: { dateTime: startDt.toISOString() },
+          end: { dateTime: endDt.toISOString() },
+        }),
+      });
+      if(res.ok){ const data = await res.json(); ev.googleEventId = data.id; }
+    }
+    saveState();
+
+    // 2) 從 Google 匯入未來 30 天內的事件（用 googleEventId 去重，避免重複匯入）
+    const timeMin = new Date().toISOString();
+    const timeMax = new Date(Date.now()+30*86400000).toISOString();
+    const listRes = await fetch(
+      `https://www.googleapis.com/calendar/v3/calendars/primary/events?timeMin=${encodeURIComponent(timeMin)}&timeMax=${encodeURIComponent(timeMax)}&singleEvents=true&orderBy=startTime`,
+      { headers: { 'Authorization': 'Bearer '+googleAccessToken } }
+    );
+    const listData = await listRes.json();
+    const existingIds = new Set(state.events.map(e=>e.googleEventId).filter(Boolean));
+    let importedCount = 0;
+    (listData.items||[]).forEach(item=>{
+      if(existingIds.has(item.id)) return;
+      const startStr = item.start && (item.start.dateTime || item.start.date);
+      if(!startStr) return;
+      const dt = new Date(startStr);
+      state.events.push({
+        id: uid(), title: item.summary || '(無標題)',
+        date: fmtDate(dt), time: (item.start && item.start.dateTime) ? fmtTime(dt) : '09:00',
+        category: '其他', note: '來自 Google 行事曆', reminder: 'onTime', done:false, notified:false,
+        googleEventId: item.id,
+      });
+      importedCount++;
+    });
+
+    state.settings.lastGoogleSync = Date.now();
+    saveState();
+    toast(`同步完成！匯出 ${toExport.length} 筆、匯入 ${importedCount} 筆新事件`);
+    refreshAll(); renderCalendar(); updateGcalStatusUI();
+  }catch(e){
+    toast('同步失敗：'+e.message);
+  }
+}
+
+async function googleDeleteEvent(ev){
+  if(!ev.googleEventId || !googleAccessToken) return;
+  try{
+    await fetch(`https://www.googleapis.com/calendar/v3/calendars/primary/events/${ev.googleEventId}`, {
+      method: 'DELETE', headers: { 'Authorization': 'Bearer '+googleAccessToken },
+    });
+  }catch(e){ /* 刪除同步失敗不影響本機操作，靜默忽略 */ }
 }
 document.getElementById('connectGoogleBtn').onclick = syncGoogleCalendar;
 
@@ -1522,7 +1798,8 @@ document.getElementById('clearDataBtn').onclick = ()=>{
     state = {
       events:[], transactions:[], chatHistory:[],
       settings:{ googleConnected:false, eventCats:[...DEFAULT_EVENT_CATS], expenseCats:[...DEFAULT_EXPENSE_CATS],
-                 incomeCats:[...DEFAULT_INCOME_CATS], incomeGoal:0, gptEndpoint: state.settings.gptEndpoint||'' }
+                 incomeCats:[...DEFAULT_INCOME_CATS], incomeGoal:0, gptEndpoint: state.settings.gptEndpoint||'',
+                 travelMode:'driving', lastGoogleSync:null, mapsApiKey: state.settings.mapsApiKey||'' }
     };
     saveState(); closeSheet(); toast('資料已清除'); refreshAll();
   };

@@ -2643,16 +2643,17 @@ const CHAT_SYSTEM_PROMPT = `你是使用者的專屬 AI 秘書，個性專業、
 3. 今日運勢類問題可以用輕鬆口吻回答，但要註明這只是娛樂參考，不是命理專業建議。
 4. 回答盡量簡短口語化，像貼心秘書在對話，不要長篇大論或條列轟炸，除非使用者要求詳細說明。
 5. 不確定的事情要老實說不知道，不要編造數字或事實。
-6. 【重要】如果使用者明確要求你「幫我新增/建立/記一筆/加一個」行程、收入、支出、長期目標或習慣，你可以直接動手做：先用一句話簡短回覆，然後另起一行附上一個動作區塊（使用者看不到這段原始格式，系統會自動轉換成確認卡片讓使用者確認）。格式如下：
+6. 【重要】只要使用者的訊息在描述一個「新的行程安排」（提到日期/時間＋要做的事，例如「今天下午三點要去XX」「明天跟客戶吃飯」）、或「一筆收入/支出」（提到金額＋用途），不管有沒有講「幫我新增」這種明確指令詞，你都要主動附上動作區塊來新增，不要只在文字裡假裝記下。動作區塊格式（使用者看不到這段原始格式，系統會自動轉換成表單）：
 [[AGENT_ACTION]]
-{"action":"add_event","title":"...","date":"YYYY-MM-DD","time":"HH:MM","category":"...","note":"..."}
+{"action":"add_event","title":"...","date":"YYYY-MM-DD","time":"HH:MM","category":"...","note":"...","address":"..."}
 [[/AGENT_ACTION]]
 支援的 action 類型：
-- add_event：需要 title, date(YYYY-MM-DD格式), time(HH:MM), category(必須從下面提供的行程分類中選一個), note(選填)
+- add_event：需要 title, date(YYYY-MM-DD格式), time(HH:MM), category(必須從下面提供的行程分類中選一個), note(選填), address(選填，如果訊息中有提到地點名稱可以填在這裡)
 - add_transaction：需要 type("income"或"expense"), amount(數字), category(必須從對應分類中選一個), date(選填，預設今天), note(選填)
 - add_goal：需要 title, deadline(選填,YYYY-MM-DD), note(選填)
 - add_habit：需要 name
-一次只能附一個動作區塊。日期請根據下面提供的今天日期正確換算（例如「明天」「下週三」）。如果使用者只是聊天、問問題、或要求不夠明確，不要附加動作區塊，直接用文字回答或反問澄清即可。`;
+一次只能附一個動作區塊。日期請根據下面提供的今天日期正確換算（例如「明天」「下週三」）。如果使用者只是聊天、問問題、單純抱怨、或訊息裡沒有具體的新資訊，不要附加動作區塊。
+7. 【絕對規則，不能違反】你的文字回覆裡絕對不能出現「已經幫你記下/新增/安排好了」這類宣稱完成的話，除非你同時附上對應的動作區塊。如果你不確定該不該新增，就用問句確認（例如「要幫你加進行事曆嗎？」），絕對不能嘴巴上說做了但其實沒附動作區塊，那是欺騙使用者。`;
 
 function buildChatContext(){
   const t = todayStr();
@@ -2726,73 +2727,75 @@ function extractAgentAction(text){
   try{ action = JSON.parse(match[1].trim()); }catch(e){ action = null; }
   return { cleanText, action };
 }
-function describeAgentAction(action){
-  switch(action.action){
-    case 'add_event':
-      return `📅 新增行程\n標題：${action.title||''}\n時間：${action.date||''} ${action.time||''}\n分類：${action.category||''}${action.note?('\n備註：'+action.note):''}`;
-    case 'add_transaction':
-      return `💰 新增${action.type==='income'?'收入':'支出'}\n金額：${money(Number(action.amount)||0)}\n分類：${action.category||''}\n日期：${action.date||todayStr()}${action.note?('\n備註：'+action.note):''}`;
-    case 'add_goal':
-      return `🏆 新增長期目標\n標題：${action.title||''}${action.deadline?('\n期限：'+action.deadline):''}`;
-    case 'add_habit':
-      return `✅ 新增習慣\n名稱：${action.name||''}`;
-    default:
-      return '未知的動作類型';
-  }
+function clickChipByValue(containerId, value){
+  const container = document.getElementById(containerId);
+  if(!container) return;
+  const chip = [...container.querySelectorAll('.chip')].find(c=>c.dataset.v===value);
+  if(chip) chip.click();
 }
-function executeAgentAction(action){
+function confirmAgentAction(action){
+  closeChat();
   switch(action.action){
     case 'add_event': {
       const cats = getEventCats();
       const category = cats.includes(action.category) ? action.category : cats[0];
-      state.events.push({ id:uid(), title: action.title||'未命名', date: action.date||todayStr(), time: action.time||'09:00',
-        category, note: action.note||'', address:'', reminder:'onTime', done:false, notified:false });
-      saveState(); refreshAll(); renderCalendar();
-      return `已幫你新增行程：${action.title}`;
+      openEventSheet(null, action.date || todayStr());
+      setTimeout(()=>{
+        const titleInput = document.getElementById('f_title');
+        const timeInput = document.getElementById('f_time');
+        const addressInput = document.getElementById('f_address');
+        const noteInput = document.getElementById('f_note');
+        if(titleInput) titleInput.value = action.title || '';
+        if(timeInput && action.time) timeInput.value = action.time;
+        if(addressInput && action.address) addressInput.value = action.address;
+        if(noteInput && action.note) noteInput.value = action.note;
+        clickChipByValue('f_cat', category);
+      }, 60);
+      toast('已幫你打開新增行程表單，確認後存檔喔');
+      break;
     }
     case 'add_transaction': {
       const type = action.type==='income' ? 'income' : 'expense';
-      const cats = type==='income' ? getIncomeCats() : getExpenseCats();
-      const category = cats.includes(action.category) ? action.category : cats[cats.length-1];
-      const amount = Number(action.amount)||0;
-      if(amount<=0) return '金額不正確，沒有新增成功';
-      state.transactions.push({ id:uid(), date: action.date||todayStr(), time: fmtTime(new Date()), type, amount, category, note: action.note||'' });
-      saveState(); refreshAll();
-      return `已幫你新增${type==='income'?'收入':'支出'}：${money(amount)}`;
+      openTxSheet(null, type);
+      setTimeout(()=>{
+        const amtInput = document.getElementById('t_amt');
+        const dateInput = document.getElementById('t_date');
+        const noteInput = document.getElementById('t_note');
+        if(amtInput) amtInput.value = Number(action.amount)||'';
+        if(dateInput && action.date) dateInput.value = action.date;
+        if(noteInput && action.note) noteInput.value = action.note;
+        const cats = type==='income'?getIncomeCats():getExpenseCats();
+        const category = cats.includes(action.category) ? action.category : cats[cats.length-1];
+        clickChipByValue('t_cat', category);
+      }, 60);
+      toast('已幫你打開記帳表單，確認後存檔喔');
+      break;
     }
     case 'add_goal': {
-      if(!state.goals) state.goals = [];
-      state.goals.push({ id:uid(), title: action.title||'未命名目標', deadline: action.deadline||'', note: action.note||'', done:false });
-      saveState(); renderGoalsList();
-      return `已幫你新增長期目標：${action.title}`;
+      openGoalSheet(null);
+      setTimeout(()=>{
+        const titleInput = document.getElementById('g_title');
+        const deadlineInput = document.getElementById('g_deadline');
+        const noteInput = document.getElementById('g_note');
+        if(titleInput) titleInput.value = action.title || '';
+        if(deadlineInput && action.deadline) deadlineInput.value = action.deadline;
+        if(noteInput && action.note) noteInput.value = action.note;
+      }, 60);
+      toast('已幫你打開新增目標表單，確認後存檔喔');
+      break;
     }
     case 'add_habit': {
-      if(!state.habits) state.habits = [];
-      state.habits.push({ id:uid(), name: action.name||'未命名習慣', doneDates: [] });
-      saveState(); renderHabitList();
-      return `已幫你新增習慣：${action.name}`;
+      document.getElementById('addHabitBtn').click();
+      setTimeout(()=>{
+        const nameInput = document.getElementById('h_name');
+        if(nameInput) nameInput.value = action.name || '';
+      }, 60);
+      toast('已幫你打開新增習慣表單，確認後存檔喔');
+      break;
     }
     default:
-      return '這個動作我還不會做';
+      toast('這個動作我還不確定怎麼處理，請手動新增');
   }
-}
-function confirmAgentAction(action){
-  openSheet(`
-    <div class="sheet-handle"></div>
-    <div class="sheet-title">🤖 AI 想幫你做這件事</div>
-    <p style="font-size:13.5px;color:var(--text-1);white-space:pre-line;line-height:1.7;background:var(--bg-1);border:1px solid var(--line);border-radius:12px;padding:12px 14px;">${escapeHtml(describeAgentAction(action))}</p>
-    <div class="btn-row">
-      <button class="btn btn-ghost" style="flex:1;" id="agentCancelBtn">取消</button>
-      <button class="btn btn-primary" style="flex:1;" id="agentConfirmBtn">確認執行</button>
-    </div>
-  `);
-  document.getElementById('agentCancelBtn').onclick = ()=>{ closeSheet(); addChatMessage('assistant','好的，已經取消這個動作。'); };
-  document.getElementById('agentConfirmBtn').onclick = ()=>{
-    const resultMsg = executeAgentAction(action);
-    closeSheet();
-    toast(resultMsg);
-    addChatMessage('assistant', '✅ '+resultMsg);
-  };
 }
 
 async function sendChatMessage(){

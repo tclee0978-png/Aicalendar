@@ -2643,17 +2643,11 @@ const CHAT_SYSTEM_PROMPT = `你是使用者的專屬 AI 秘書，個性專業、
 3. 今日運勢類問題可以用輕鬆口吻回答，但要註明這只是娛樂參考，不是命理專業建議。
 4. 回答盡量簡短口語化，像貼心秘書在對話，不要長篇大論或條列轟炸，除非使用者要求詳細說明。
 5. 不確定的事情要老實說不知道，不要編造數字或事實。
-6. 【重要】只要使用者的訊息在描述一個「新的行程安排」（提到日期/時間＋要做的事，例如「今天下午三點要去XX」「明天跟客戶吃飯」）、或「一筆收入/支出」（提到金額＋用途），不管有沒有講「幫我新增」這種明確指令詞，你都要主動附上動作區塊來新增，不要只在文字裡假裝記下。動作區塊格式（使用者看不到這段原始格式，系統會自動轉換成表單）：
-[[AGENT_ACTION]]
-{"action":"add_event","title":"...","date":"YYYY-MM-DD","time":"HH:MM","category":"...","note":"...","address":"..."}
-[[/AGENT_ACTION]]
-支援的 action 類型：
-- add_event：需要 title, date(YYYY-MM-DD格式), time(HH:MM), category(必須從下面提供的行程分類中選一個), note(選填), address(選填，如果訊息中有提到地點名稱可以填在這裡)
-- add_transaction：需要 type("income"或"expense"), amount(數字), category(必須從對應分類中選一個), date(選填，預設今天), note(選填)
-- add_goal：需要 title, deadline(選填,YYYY-MM-DD), note(選填)
-- add_habit：需要 name
-一次只能附一個動作區塊。日期請根據下面提供的今天日期正確換算（例如「明天」「下週三」）。如果使用者只是聊天、問問題、單純抱怨、或訊息裡沒有具體的新資訊，不要附加動作區塊。
-7. 【絕對規則，不能違反】你的文字回覆裡絕對不能出現「已經幫你記下/新增/安排好了」這類宣稱完成的話，除非你同時附上對應的動作區塊。如果你不確定該不該新增，就用問句確認（例如「要幫你加進行事曆嗎？」），絕對不能嘴巴上說做了但其實沒附動作區塊，那是欺騙使用者。`;
+6. 【重要】只要使用者的訊息在描述一個「新的行程安排」（提到日期/時間＋要做的事，例如「今天下午三點要去XX」「明天跟客戶吃飯」）、或「一筆收入/支出」（提到金額＋用途）、或想設定長期目標/習慣，不管有沒有講「幫我新增」這種明確指令詞，都要在 action 欄位填上對應資料，不要只在 reply 文字裡假裝記下。
+7. 【絕對規則，不能違反】你的 reply 文字裡絕對不能出現「已經幫你記下/新增/安排好了」這類宣稱完成的話，除非你同時在 action 欄位填上對應資料。如果不確定該不該新增，就用問句確認（例如「要幫你加進行事曆嗎？」），action 留 null，絕對不能嘴巴上說做了但 action 是空的，那是欺騙使用者。
+8. 導航、開地圖這類要求，不是你能做的事，回覆使用者這個 App 本身有「導航」按鈕可以用，不要叫使用者去用其他 App。
+9. 你會收到使用者的行程、記帳、目標、預算、習慣狀況（見下方資料區塊）。回答問題時要主動運用這些資料判斷輕重緩急，而不是只當成聊天機器人——例如使用者問「我今天忙不忙」，要根據實際行程數量與時間回答；問「錢夠不夠」，要參考本月收支與預算警示狀況。
+（回覆格式由系統另外控制，你只要專心把 reply 和 action 內容想清楚即可）`;
 
 function buildChatContext(){
   const t = todayStr();
@@ -2662,10 +2656,31 @@ function buildChatContext(){
   const monthTx = state.transactions.filter(x=>x.date>=start && x.date<=end);
   const inc = sumTx(monthTx,'income'), exp = sumTx(monthTx,'expense');
   const goal = Number(state.settings.incomeGoal)||0;
-  return `[使用者目前資料，僅供參考回答用，不要主動逐條複誦]
+
+  // 未來 7 天行程（不含今天，今天已經列在上面）
+  const weekEnd = new Date(); weekEnd.setDate(weekEnd.getDate()+7);
+  const upcoming = state.events
+    .filter(e=> e.date>t && e.date<=fmtDate(weekEnd) && !e.done)
+    .sort((a,b)=> (a.date+a.time).localeCompare(b.date+b.time))
+    .slice(0,15);
+
+  // 長期目標（未完成的）
+  const activeGoals = (state.goals||[]).filter(g=>!g.done);
+
+  // 預算超支狀況
+  const warnings = typeof getBudgetWarnings==='function' ? getBudgetWarnings() : [];
+
+  // 習慣與連續天數
+  const habits = (state.habits||[]).map(h=> `${h.name}(連續${typeof habitStreak==='function'?habitStreak(h):0}天)`);
+
+  return `[使用者目前資料，僅供你判斷優先順序與給建議用，不要主動逐條複誦這整段]
 今天日期：${t}
 今日行程：${events.length? events.map(e=>e.time+' '+e.title).join('、') : '無'}
+未來7天行程：${upcoming.length? upcoming.map(e=>e.date+' '+e.time+' '+e.title).join('、') : '無'}
 本月收入：${inc}｜本月支出：${exp}｜本月結餘：${inc-exp}${goal?('｜本月收入目標：'+goal):''}
+長期目標：${activeGoals.length? activeGoals.map(g=>g.title+(g.deadline?('(期限'+g.deadline+')'):'')).join('、') : '無'}
+預算超支：${warnings.length? warnings.map(w=>w.cat+'已超支'+(w.spent-w.budget)).join('、') : '無超支'}
+習慣打卡：${habits.length? habits.join('、') : '無'}
 [可用分類，新增資料時 category 欄位必須從對應清單挑選]
 行程分類：${getEventCats().join('、')}
 支出分類：${getExpenseCats().join('、')}
@@ -2831,10 +2846,17 @@ async function sendChatMessage(){
     });
     const data = await resp.json();
     hideTyping();
-    const reply = data.reply || (data.choices && data.choices[0] && data.choices[0].message && data.choices[0].message.content) || '（沒有收到有效回覆，請確認中繼服務設定是否正確）';
-    const { cleanText, action } = extractAgentAction(reply);
-    if(cleanText){
-      addChatMessage('assistant', cleanText);
+    let replyText = data.reply || (data.choices && data.choices[0] && data.choices[0].message && data.choices[0].message.content) || '（沒有收到有效回覆，請確認中繼服務設定是否正確）';
+    // 新版 Worker（v3）會直接回傳結構化的 action 欄位，最優先採用
+    let action = (data.action !== undefined) ? data.action : null;
+    // 備援：如果 Worker 還是舊版、沒有 action 欄位，改用舊的文字標記解析方式
+    if(action === null && data.action === undefined){
+      const extracted = extractAgentAction(replyText);
+      replyText = extracted.cleanText;
+      action = extracted.action;
+    }
+    if(replyText){
+      addChatMessage('assistant', replyText);
     } else if(!action){
       addChatMessage('assistant', '抱歉，這次沒能完整處理這個請求，能不能麻煩你換個方式再說一次，或直接手動新增？');
     }

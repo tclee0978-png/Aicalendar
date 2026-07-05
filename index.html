@@ -456,6 +456,11 @@ html[data-theme="light"] .alarm-overlay{ background: linear-gradient(180deg,#eef
       </div>
     </div>
 
+    <div class="section" id="dashboardSummarySection" style="display:none;">
+      <div class="section-title">🎯 目標與預算摘要</div>
+      <div class="card" style="padding:16px;" id="dashboardSummaryWrap"></div>
+    </div>
+
     <div class="section">
       <div class="section-title">本月財務總覽 <span class="more" id="goStats">查看統計 ›</span></div>
       <div class="card finance-row">
@@ -596,6 +601,16 @@ html[data-theme="light"] .alarm-overlay{ background: linear-gradient(180deg,#eef
         <div class="settings-row">
           <div><div class="t">推播通知</div><div class="s" id="notifStatusText">尚未開啟權限</div></div>
           <button class="btn btn-ghost" style="padding:8px 14px;font-size:12.5px;" id="requestNotifBtn">開啟</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="section">
+      <div class="section-title">天氣智慧提醒</div>
+      <div class="card" style="padding:6px 16px;">
+        <div class="settings-row">
+          <div><div class="t">定位位置</div><div class="s" id="weatherLocStatus">尚未設定</div></div>
+          <button class="btn btn-ghost" style="padding:8px 14px;font-size:12.5px;" id="setLocationBtn">使用目前位置</button>
         </div>
       </div>
     </div>
@@ -857,6 +872,7 @@ if(!Array.isArray(state.goals)) state.goals = [];
 if(!Array.isArray(state.habits)) state.habits = [];
 if(!state.settings.budgets) state.settings.budgets = {};
 if(state.settings.savingsGoal===undefined || state.settings.savingsGoal===null) state.settings.savingsGoal = 0;
+if(state.settings.location===undefined) state.settings.location = null;
 saveState();
 function getEventCats(){ return state.settings.eventCats; }
 function getExpenseCats(){ return state.settings.expenseCats; }
@@ -976,6 +992,57 @@ function renderToday(){
 
   // 機器人提示
   document.getElementById('robotTip').innerHTML = generateRobotTip(todays, monthTx, inc, exp);
+  renderDashboardSummary();
+}
+
+/* ============================================================
+   AI Life Dashboard：把目標/預算等重要警示浮到今日頁最上面
+   ============================================================ */
+function renderDashboardSummary(){
+  const section = document.getElementById('dashboardSummarySection');
+  const wrap = document.getElementById('dashboardSummaryWrap');
+  if(!section || !wrap) return;
+  const parts = [];
+
+  // 存錢目標進度
+  const savingsGoal = Number(state.settings.savingsGoal)||0;
+  if(savingsGoal>0){
+    const current = getTotalBalance();
+    const pct = Math.max(0, Math.min(100, Math.round(current/savingsGoal*100)));
+    parts.push(`<div style="margin-bottom:14px;">
+      <div style="display:flex;justify-content:space-between;font-size:12px;color:var(--text-1);margin-bottom:6px;">
+        <span>存錢目標</span><span>${money(current)} / ${money(savingsGoal)}（${pct}%）</span>
+      </div>
+      <div class="cat-bar-track" style="height:8px;"><div class="cat-bar-fill" style="width:${pct}%;"></div></div>
+    </div>`);
+  }
+
+  // 即將到期的長期目標（14天內、尚未完成）
+  const now = new Date();
+  const upcomingGoals = (state.goals||[]).filter(g=>{
+    if(g.done || !g.deadline) return false;
+    const diffDays = (new Date(g.deadline) - now) / 86400000;
+    return diffDays>=0 && diffDays<=14;
+  }).sort((a,b)=>a.deadline.localeCompare(b.deadline));
+  if(upcomingGoals.length){
+    const g = upcomingGoals[0];
+    const daysLeft = Math.ceil((new Date(g.deadline) - now) / 86400000);
+    parts.push(`<div style="font-size:12.5px;color:var(--warn);margin-bottom:10px;">⏰ 目標「${escapeHtml(g.title)}」還有 <b>${daysLeft}</b> 天到期</div>`);
+  }
+
+  // 預算超支警示
+  const warnings = getBudgetWarnings();
+  if(warnings.length){
+    const w = warnings[0];
+    parts.push(`<div style="font-size:12.5px;color:var(--expense);">⚠️ 「${escapeHtml(w.cat)}」已超出預算 ${money(w.spent-w.budget)}${warnings.length>1?`（還有 ${warnings.length-1} 項超支）`:''}</div>`);
+  }
+
+  if(parts.length){
+    section.style.display = 'block';
+    wrap.innerHTML = parts.join('');
+  } else {
+    section.style.display = 'none';
+  }
 }
 
 function eventRowHTML(e){
@@ -984,7 +1051,7 @@ function eventRowHTML(e){
     <div class="tag-dot" style="background:${catColor(e.category)}"></div>
     <div style="flex:1;">
       <div class="li-title">${escapeHtml(e.title)}</div>
-      <div class="li-sub">${e.category} · ${reminderLabel(e.reminder)}提醒${e.note?(' · '+escapeHtml(e.note)):''}</div>
+      <div class="li-sub">${e.category} · ${reminderLabel(e.reminder)}提醒${e.note?(' · '+escapeHtml(e.note)):''}${rainBadgeHTML(e)}</div>
       ${e.address?`<div class="li-sub" style="color:var(--neon-2);">📍 ${escapeHtml(e.address)}</div>`:''}
     </div>
     <div class="li-time">${e.time||'--:--'}<br><span style="font-size:10px;color:var(--text-2);">${e.date.slice(5)}</span></div>
@@ -1246,6 +1313,19 @@ function generateRobotTip(todayEvents, monthTx, inc, exp){
   if(goal>0){
     if(inc>=goal) tips.push('本月收入目標已經達成啦，太厲害了 🎉');
     else tips.push(`加油！還差 <b>${money(goal-inc)}</b> 就能達成本月收入目標囉`);
+  }
+
+  // 天氣智慧提醒：今天行程中有降雨機率高的時段
+  if(weatherCache){
+    const rainyEvent = todayEvents.find(e=>{
+      if(!e.time) return false;
+      const prob = getRainProbAtHour(parseInt(e.time.split(':')[0]));
+      return prob!==null && prob>=50;
+    });
+    if(rainyEvent){
+      const prob = getRainProbAtHour(parseInt(rainyEvent.time.split(':')[0]));
+      tips.push(`🌧️ ${rainyEvent.time} 「${escapeHtml(rainyEvent.title)}」那個時段降雨機率 ${prob}%，記得帶傘、提早出門`);
+    }
   }
   return tips[Math.floor(Math.random()*tips.length)];
 }
@@ -2047,7 +2127,13 @@ setInterval(()=>{
   state.events.forEach(ev=>{
     if(ev.done || ev.notified) return;
     const eventDt = new Date(ev.date+'T'+(ev.time||'00:00'));
-    const triggerDt = new Date(eventDt.getTime() - reminderMinutes(ev.reminder)*60000);
+    let bufferMin = reminderMinutes(ev.reminder);
+    // 天氣智慧調整：如果那個時段降雨機率高，自動多提早 15 分鐘提醒
+    if(ev.date===todayStr() && ev.time){
+      const prob = getRainProbAtHour(parseInt(ev.time.split(':')[0]));
+      if(prob!==null && prob>=50) bufferMin += 15;
+    }
+    const triggerDt = new Date(eventDt.getTime() - bufferMin*60000);
     if(now >= triggerDt && now.getTime()-triggerDt.getTime() < 60000*2){
       ev.notified = true; saveState();
       fireAlarm(ev);
@@ -2143,6 +2229,52 @@ function refreshNotifStatus(){
   else if(Notification.permission==='denied') el.textContent='已被封鎖，請至瀏覽器設定開啟';
   else el.textContent='尚未開啟權限';
 }
+/* ============================================================
+   天氣智慧提醒：用 Open-Meteo（免金鑰、免申請）抓當天降雨機率
+   ============================================================ */
+let weatherCache = null; // { date, hourlyTime, hourlyPrecip, fetchedAt }
+function updateWeatherLocStatus(){
+  const el = document.getElementById('weatherLocStatus');
+  if(!el) return;
+  const loc = state.settings.location;
+  el.textContent = loc ? `已設定（${loc.lat.toFixed(2)}, ${loc.lon.toFixed(2)}）` : '尚未設定，設定後today頁會提示降雨資訊';
+}
+document.getElementById('setLocationBtn').onclick = ()=>{
+  if(!navigator.geolocation){ toast('此裝置不支援定位'); return; }
+  navigator.geolocation.getCurrentPosition(pos=>{
+    state.settings.location = { lat: pos.coords.latitude, lon: pos.coords.longitude };
+    saveState(); updateWeatherLocStatus(); toast('已設定目前位置');
+    weatherCache = null;
+    fetchWeatherIfNeeded().then(()=> refreshAll());
+  }, err=>{ toast('無法取得位置：'+err.message); });
+};
+async function fetchWeatherIfNeeded(){
+  const loc = state.settings.location;
+  if(!loc) return null;
+  const today = todayStr();
+  if(weatherCache && weatherCache.date===today && (Date.now()-weatherCache.fetchedAt) < 2*60*60*1000){
+    return weatherCache;
+  }
+  try{
+    const url = `https://api.open-meteo.com/v1/forecast?latitude=${loc.lat}&longitude=${loc.lon}&hourly=precipitation_probability&timezone=Asia%2FTaipei&forecast_days=1`;
+    const res = await fetch(url);
+    const data = await res.json();
+    weatherCache = { date: today, hourlyTime: data.hourly.time, hourlyPrecip: data.hourly.precipitation_probability, fetchedAt: Date.now() };
+    return weatherCache;
+  }catch(e){ console.warn('天氣資料取得失敗', e); return null; }
+}
+function getRainProbAtHour(hour){
+  if(!weatherCache || !weatherCache.hourlyTime) return null;
+  const idx = weatherCache.hourlyTime.findIndex(t=> t.endsWith(pad(hour)+':00'));
+  return idx>-1 ? weatherCache.hourlyPrecip[idx] : null;
+}
+function rainBadgeHTML(e){
+  if(e.date !== todayStr() || !e.time) return '';
+  const prob = getRainProbAtHour(parseInt(e.time.split(':')[0]));
+  if(prob===null || prob<50) return '';
+  return ` <span style="color:#5ab8ff;">🌧️ 降雨 ${prob}%</span>`;
+}
+
 document.getElementById('requestNotifBtn').onclick = ()=>{
   if(!('Notification' in window)){ toast('此瀏覽器不支援通知，請開啟通知權限'); return; }
   Notification.requestPermission().then(()=>{ refreshNotifStatus(); });
@@ -2158,6 +2290,7 @@ function renderCatManager(){
   document.getElementById('mapsApiKeyInput').value = state.settings.mapsApiKey || '';
   renderAiEndpointList();
   renderBudgetSettings();
+  updateWeatherLocStatus();
   if(typeof updateGcalStatusUI === 'function') updateGcalStatusUI();
 }
 document.getElementById('mapsApiKeyInput').addEventListener('change', e=>{
@@ -2463,7 +2596,7 @@ document.getElementById('importDataFile').addEventListener('change', (e)=>{
             googleConnected:false, eventCats:[...DEFAULT_EVENT_CATS], expenseCats:[...DEFAULT_EXPENSE_CATS],
             incomeCats:[...DEFAULT_INCOME_CATS], incomeGoal:0, gptEndpoint:'', travelMode:'driving',
             lastGoogleSync:null, mapsApiKey:'', theme:'dark', aiEndpoints:[], activeAiEndpointId:null,
-            budgets:{}, savingsGoal:0,
+            budgets:{}, savingsGoal:0, location:null,
           }, parsed.settings || {}),
         };
         saveState(); closeSheet(); toast('已匯入備份'); applyTheme(); refreshAll(); renderCatManager();
@@ -2493,7 +2626,8 @@ document.getElementById('clearDataBtn').onclick = ()=>{
                  incomeCats:[...DEFAULT_INCOME_CATS], incomeGoal:0, gptEndpoint: state.settings.gptEndpoint||'',
                  travelMode:'driving', lastGoogleSync:null, mapsApiKey: state.settings.mapsApiKey||'',
                  theme: state.settings.theme||'dark', aiEndpoints: state.settings.aiEndpoints||[],
-                 activeAiEndpointId: state.settings.activeAiEndpointId||null, budgets:{}, savingsGoal:0 }
+                 activeAiEndpointId: state.settings.activeAiEndpointId||null, budgets:{}, savingsGoal:0,
+                 location: state.settings.location||null }
     };
     saveState(); closeSheet(); toast('資料已清除'); applyTheme(); refreshAll();
   };
@@ -2508,7 +2642,17 @@ const CHAT_SYSTEM_PROMPT = `你是使用者的專屬 AI 秘書，個性專業、
 2. 遇到股票／投資相關問題：只能討論策略、邏輯、名詞解釋與風險觀念，絕對不要提供任何即時股價、精確漲跌幅、或「保證獲利」之類的說法，因為你沒有即時行情資料。如果使用者問即時數字，提醒他去看自己的行情系統確認。
 3. 今日運勢類問題可以用輕鬆口吻回答，但要註明這只是娛樂參考，不是命理專業建議。
 4. 回答盡量簡短口語化，像貼心秘書在對話，不要長篇大論或條列轟炸，除非使用者要求詳細說明。
-5. 不確定的事情要老實說不知道，不要編造數字或事實。`;
+5. 不確定的事情要老實說不知道，不要編造數字或事實。
+6. 【重要】如果使用者明確要求你「幫我新增/建立/記一筆/加一個」行程、收入、支出、長期目標或習慣，你可以直接動手做：先用一句話簡短回覆，然後另起一行附上一個動作區塊（使用者看不到這段原始格式，系統會自動轉換成確認卡片讓使用者確認）。格式如下：
+[[AGENT_ACTION]]
+{"action":"add_event","title":"...","date":"YYYY-MM-DD","time":"HH:MM","category":"...","note":"..."}
+[[/AGENT_ACTION]]
+支援的 action 類型：
+- add_event：需要 title, date(YYYY-MM-DD格式), time(HH:MM), category(必須從下面提供的行程分類中選一個), note(選填)
+- add_transaction：需要 type("income"或"expense"), amount(數字), category(必須從對應分類中選一個), date(選填，預設今天), note(選填)
+- add_goal：需要 title, deadline(選填,YYYY-MM-DD), note(選填)
+- add_habit：需要 name
+一次只能附一個動作區塊。日期請根據下面提供的今天日期正確換算（例如「明天」「下週三」）。如果使用者只是聊天、問問題、或要求不夠明確，不要附加動作區塊，直接用文字回答或反問澄清即可。`;
 
 function buildChatContext(){
   const t = todayStr();
@@ -2520,7 +2664,11 @@ function buildChatContext(){
   return `[使用者目前資料，僅供參考回答用，不要主動逐條複誦]
 今天日期：${t}
 今日行程：${events.length? events.map(e=>e.time+' '+e.title).join('、') : '無'}
-本月收入：${inc}｜本月支出：${exp}｜本月結餘：${inc-exp}${goal?('｜本月收入目標：'+goal):''}`;
+本月收入：${inc}｜本月支出：${exp}｜本月結餘：${inc-exp}${goal?('｜本月收入目標：'+goal):''}
+[可用分類，新增資料時 category 欄位必須從對應清單挑選]
+行程分類：${getEventCats().join('、')}
+支出分類：${getExpenseCats().join('、')}
+收入分類：${getIncomeCats().join('、')}`;
 }
 
 function openChat(){
@@ -2567,6 +2715,86 @@ function showTyping(){
 }
 function hideTyping(){ const el = document.getElementById('typingRow'); if(el) el.remove(); }
 
+/* ============================================================
+   AI Agent：讓聊天不只是建議，AI 可以直接幫使用者新增資料
+   ============================================================ */
+function extractAgentAction(text){
+  const match = text.match(/\[\[AGENT_ACTION\]\]([\s\S]*?)\[\[\/AGENT_ACTION\]\]/);
+  if(!match) return { cleanText: text, action: null };
+  const cleanText = text.replace(match[0], '').trim();
+  let action = null;
+  try{ action = JSON.parse(match[1].trim()); }catch(e){ action = null; }
+  return { cleanText, action };
+}
+function describeAgentAction(action){
+  switch(action.action){
+    case 'add_event':
+      return `📅 新增行程\n標題：${action.title||''}\n時間：${action.date||''} ${action.time||''}\n分類：${action.category||''}${action.note?('\n備註：'+action.note):''}`;
+    case 'add_transaction':
+      return `💰 新增${action.type==='income'?'收入':'支出'}\n金額：${money(Number(action.amount)||0)}\n分類：${action.category||''}\n日期：${action.date||todayStr()}${action.note?('\n備註：'+action.note):''}`;
+    case 'add_goal':
+      return `🏆 新增長期目標\n標題：${action.title||''}${action.deadline?('\n期限：'+action.deadline):''}`;
+    case 'add_habit':
+      return `✅ 新增習慣\n名稱：${action.name||''}`;
+    default:
+      return '未知的動作類型';
+  }
+}
+function executeAgentAction(action){
+  switch(action.action){
+    case 'add_event': {
+      const cats = getEventCats();
+      const category = cats.includes(action.category) ? action.category : cats[0];
+      state.events.push({ id:uid(), title: action.title||'未命名', date: action.date||todayStr(), time: action.time||'09:00',
+        category, note: action.note||'', address:'', reminder:'onTime', done:false, notified:false });
+      saveState(); refreshAll(); renderCalendar();
+      return `已幫你新增行程：${action.title}`;
+    }
+    case 'add_transaction': {
+      const type = action.type==='income' ? 'income' : 'expense';
+      const cats = type==='income' ? getIncomeCats() : getExpenseCats();
+      const category = cats.includes(action.category) ? action.category : cats[cats.length-1];
+      const amount = Number(action.amount)||0;
+      if(amount<=0) return '金額不正確，沒有新增成功';
+      state.transactions.push({ id:uid(), date: action.date||todayStr(), time: fmtTime(new Date()), type, amount, category, note: action.note||'' });
+      saveState(); refreshAll();
+      return `已幫你新增${type==='income'?'收入':'支出'}：${money(amount)}`;
+    }
+    case 'add_goal': {
+      if(!state.goals) state.goals = [];
+      state.goals.push({ id:uid(), title: action.title||'未命名目標', deadline: action.deadline||'', note: action.note||'', done:false });
+      saveState(); renderGoalsList();
+      return `已幫你新增長期目標：${action.title}`;
+    }
+    case 'add_habit': {
+      if(!state.habits) state.habits = [];
+      state.habits.push({ id:uid(), name: action.name||'未命名習慣', doneDates: [] });
+      saveState(); renderHabitList();
+      return `已幫你新增習慣：${action.name}`;
+    }
+    default:
+      return '這個動作我還不會做';
+  }
+}
+function confirmAgentAction(action){
+  openSheet(`
+    <div class="sheet-handle"></div>
+    <div class="sheet-title">🤖 AI 想幫你做這件事</div>
+    <p style="font-size:13.5px;color:var(--text-1);white-space:pre-line;line-height:1.7;background:var(--bg-1);border:1px solid var(--line);border-radius:12px;padding:12px 14px;">${escapeHtml(describeAgentAction(action))}</p>
+    <div class="btn-row">
+      <button class="btn btn-ghost" style="flex:1;" id="agentCancelBtn">取消</button>
+      <button class="btn btn-primary" style="flex:1;" id="agentConfirmBtn">確認執行</button>
+    </div>
+  `);
+  document.getElementById('agentCancelBtn').onclick = ()=>{ closeSheet(); addChatMessage('assistant','好的，已經取消這個動作。'); };
+  document.getElementById('agentConfirmBtn').onclick = ()=>{
+    const resultMsg = executeAgentAction(action);
+    closeSheet();
+    toast(resultMsg);
+    addChatMessage('assistant', '✅ '+resultMsg);
+  };
+}
+
 async function sendChatMessage(){
   const input = document.getElementById('chatInput');
   const text = input.value.trim();
@@ -2596,7 +2824,9 @@ async function sendChatMessage(){
     const data = await resp.json();
     hideTyping();
     const reply = data.reply || (data.choices && data.choices[0] && data.choices[0].message && data.choices[0].message.content) || '（沒有收到有效回覆，請確認中繼服務設定是否正確）';
-    addChatMessage('assistant', reply);
+    const { cleanText, action } = extractAgentAction(reply);
+    addChatMessage('assistant', cleanText || reply);
+    if(action) confirmAgentAction(action);
   }catch(e){
     hideTyping();
     addChatMessage('assistant', '連線失敗了，請確認中繼服務網址是否正確，或稍後再試一次。');
@@ -2636,6 +2866,7 @@ generateRecurringTransactions();
 refreshNotifStatus();
 renderToday();
 renderCalendar();
+if(state.settings.location){ fetchWeatherIfNeeded().then(()=> renderToday()); }
 </script>
 </body>
 </html>

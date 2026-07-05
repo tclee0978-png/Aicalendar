@@ -306,6 +306,25 @@ body{
 .switch.on::after{left:21px;}
 .pwa-hint{font-size:12px; color:var(--text-2); line-height:1.6; padding:2px 2px 0;}
 
+/* ===== 淺色主題覆寫 ===== */
+html[data-theme="light"]{
+  --bg-0:#f4f6fb; --bg-1:#ffffff; --bg-2:#ffffff;
+  --card:#ffffffee; --card-solid:#ffffff; --line:#dde3f0;
+  --neon:#2266d0; --neon-2:#1c5fc4;
+  --neon-glow:0 0 14px rgba(34,102,208,.22);
+  --white-glow:0 0 16px rgba(20,25,43,.05);
+  --text-0:#14192b; --text-1:#5b6478; --text-2:#98a1b5;
+  --income:#149267; --expense:#d93a52; --warn:#b9790f;
+}
+html[data-theme="light"] body{
+  background:
+    radial-gradient(120% 60% at 50% -10%, #e7edfb 0%, transparent 60%),
+    radial-gradient(90% 50% at 100% 110%, #eef2fb 0%, transparent 55%),
+    var(--bg-0);
+}
+html[data-theme="light"] .tabbar{ background: rgba(255,255,255,.92); }
+html[data-theme="light"] .alarm-overlay{ background: linear-gradient(180deg,#eef2fb,#ffffff); }
+
 /* 大型 SOS 到期警示圖標 */
 .sos-badge{
   position:fixed; right:16px; top:76px; z-index:50; cursor:pointer;
@@ -415,8 +434,13 @@ body{
         <div class="dow" id="todayDow">週日</div>
         <div class="full-date" id="todayFull">7 月 5 日 <span id="liveClock" style="font-size:14px;color:var(--neon-2);font-family:var(--font-num);font-weight:700;">00:00</span></div>
       </div>
-      <div class="avatar-mini" id="openSettingsFromAvatar">
-        <svg width="24" height="24" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="8" r="4" stroke="#4ea8ff" stroke-width="1.6"/><path d="M4 20c1.5-4 5-5 8-5s6.5 1 8 5" stroke="#4ea8ff" stroke-width="1.6" stroke-linecap="round"/></svg>
+      <div style="display:flex; gap:8px;">
+        <div class="avatar-mini" id="openSearchBtn" title="搜尋">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none"><circle cx="11" cy="11" r="7" stroke="#4ea8ff" stroke-width="1.8"/><path d="M21 21l-4-4" stroke="#4ea8ff" stroke-width="1.8" stroke-linecap="round"/></svg>
+        </div>
+        <div class="avatar-mini" id="openSettingsFromAvatar">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="8" r="4" stroke="#4ea8ff" stroke-width="1.6"/><path d="M4 20c1.5-4 5-5 8-5s6.5 1 8 5" stroke="#4ea8ff" stroke-width="1.6" stroke-linecap="round"/></svg>
+        </div>
       </div>
     </div>
 
@@ -439,6 +463,11 @@ body{
         <div class="finance-box"><div class="label">本月支出</div><div class="num expense" id="mExpense">$0</div></div>
         <div class="finance-box"><div class="label">本月結餘</div><div class="num balance" id="mBalance">$0</div></div>
       </div>
+    </div>
+
+    <div class="section">
+      <div class="section-title">習慣追蹤 <span class="more" id="addHabitBtn">＋ 新增習慣</span></div>
+      <div id="habitListWrap"></div>
     </div>
 
     <div class="section">
@@ -501,6 +530,12 @@ body{
       <div class="section-title">所有紀錄</div>
       <div class="card" id="txListWrap" style="padding:4px 6px;"></div>
     </div>
+
+    <div class="section">
+      <div class="section-title">固定收支（每月自動記一筆）</div>
+      <div class="card" id="recurringListWrap" style="padding:4px 6px;"></div>
+      <div class="fab-row"><button class="btn btn-ghost" style="width:100%;" id="addRecurringBtn">＋ 新增固定收支</button></div>
+    </div>
   </section>
 
   <!-- ========================= 統計頁 STATS ========================= -->
@@ -522,15 +557,38 @@ body{
         </div>
       </div>
     </div>
+    <div class="section" id="budgetWarningSection" style="display:none;">
+      <div class="section-title">⚠️ 預算超支警示</div>
+      <div class="card" style="padding:14px 16px;" id="budgetWarningList"></div>
+    </div>
+    <div class="section" id="savingsGoalSection" style="display:none;">
+      <div class="section-title">🎯 存錢目標進度</div>
+      <div class="card" style="padding:16px;" id="savingsGoalWrap"></div>
+    </div>
     <div class="section">
       <div class="section-title">支出分類佔比（本月）</div>
       <div class="card" style="padding:16px 14px;" id="catBreakdown"></div>
+    </div>
+    <div class="section">
+      <div class="section-title">🏆 長期目標</div>
+      <div class="card" id="goalsListWrap" style="padding:4px 6px;"></div>
+      <div class="fab-row"><button class="btn btn-ghost" style="width:100%;" id="addGoalBtn">＋ 新增目標</button></div>
     </div>
   </section>
 
   <!-- ========================= 設定頁 SETTINGS ========================= -->
   <section class="page" id="page-settings">
     <div class="topbar"><div class="date-block"><div class="dow">設定</div><div class="full-date">個人化與連動</div></div></div>
+
+    <div class="section">
+      <div class="section-title">外觀</div>
+      <div class="card" style="padding:6px 16px;">
+        <div class="settings-row">
+          <div><div class="t">淺色模式</div><div class="s">關閉則使用深色主題</div></div>
+          <div class="switch" id="themeSwitch"></div>
+        </div>
+      </div>
+    </div>
 
     <div class="section">
       <div class="section-title">通知</div>
@@ -543,14 +601,20 @@ body{
     </div>
 
     <div class="section">
-      <div class="section-title">隨身秘書（AI）設定</div>
+      <div class="section-title">隨身秘書（AI 引擎）</div>
       <div class="card" style="padding:16px;">
+        <div id="aiEndpointList" style="margin-bottom:12px;"></div>
+        <div class="field" style="margin-bottom:8px;">
+          <label>名稱</label>
+          <input id="newAiEndpointName" placeholder="例如：GPT 或 Gemini">
+        </div>
         <div class="field" style="margin-bottom:10px;">
           <label>中繼服務網址（Cloudflare Worker）</label>
-          <input id="gptEndpointInput" type="url" placeholder="https://xxx.你的帳號.workers.dev">
+          <input id="newAiEndpointUrl" type="url" placeholder="https://xxx.你的帳號.workers.dev">
         </div>
+        <button class="btn btn-ghost" style="width:100%;margin-bottom:10px;" id="addAiEndpointBtn">＋ 新增引擎</button>
         <div class="pwa-hint">
-          需要先部署一支 Cloudflare Worker 來安全存放 AI API Key（不能直接把 Key 寫在這支網頁裡）。程式碼另外提供，部署完把網址貼在上面即可。
+          可以新增多組 Worker 網址（例如一組接 GPT、一組接 Gemini），用左邊圓點選擇目前要用哪一組聊天。
         </div>
       </div>
     </div>
@@ -558,11 +622,20 @@ body{
     <div class="section">
       <div class="section-title">目標設定</div>
       <div class="card" style="padding:16px;">
-        <div class="field" style="margin-bottom:0;">
+        <div class="field" style="margin-bottom:12px;">
           <label>本月收入目標</label>
           <input id="incomeGoalInput" type="number" inputmode="numeric" placeholder="例如：80000">
         </div>
+        <div class="field" style="margin-bottom:0;">
+          <label>存錢目標（累積結餘達到多少）</label>
+          <input id="savingsGoalInput" type="number" inputmode="numeric" placeholder="例如：500000">
+        </div>
       </div>
+    </div>
+
+    <div class="section">
+      <div class="section-title">預算設定（每月，各分類超支會警示）</div>
+      <div class="card" style="padding:16px;" id="budgetSettingsWrap"></div>
     </div>
 
     <div class="section">
@@ -626,6 +699,15 @@ body{
     <div class="section">
       <div class="section-title">資料管理</div>
       <div class="card" style="padding:6px 16px;">
+        <div class="settings-row">
+          <div><div class="t">匯出備份</div><div class="s">下載目前所有資料成一個檔案</div></div>
+          <button class="btn btn-ghost" style="padding:8px 14px;font-size:12.5px;" id="exportDataBtn">匯出</button>
+        </div>
+        <div class="settings-row">
+          <div><div class="t">匯入備份</div><div class="s">從備份檔案還原（會覆蓋目前資料）</div></div>
+          <button class="btn btn-ghost" style="padding:8px 14px;font-size:12.5px;" id="importDataBtn">匯入</button>
+          <input type="file" id="importDataFile" accept="application/json" style="display:none;">
+        </div>
         <div class="settings-row">
           <div><div class="t">清除所有資料</div><div class="s">行事曆、記帳紀錄將全部刪除</div></div>
           <button class="btn btn-danger" style="padding:8px 14px;font-size:12.5px;" id="clearDataBtn">清除</button>
@@ -759,7 +841,22 @@ if(state.settings.gptEndpoint===undefined) state.settings.gptEndpoint = '';
 if(state.settings.lastGoogleSync===undefined) state.settings.lastGoogleSync = null;
 if(!state.settings.travelMode) state.settings.travelMode = 'driving';
 if(state.settings.mapsApiKey===undefined) state.settings.mapsApiKey = '';
+if(!state.settings.theme) state.settings.theme = 'dark';
+if(!Array.isArray(state.settings.aiEndpoints)) state.settings.aiEndpoints = [];
+if(state.settings.gptEndpoint && !state.settings.aiEndpoints.length){
+  const migratedId = uid();
+  state.settings.aiEndpoints.push({ id: migratedId, name:'預設引擎', url: state.settings.gptEndpoint });
+  state.settings.activeAiEndpointId = migratedId;
+}
+if(state.settings.activeAiEndpointId===undefined || state.settings.activeAiEndpointId===null){
+  state.settings.activeAiEndpointId = (state.settings.aiEndpoints[0] && state.settings.aiEndpoints[0].id) || null;
+}
 if(!Array.isArray(state.chatHistory)) state.chatHistory = [];
+if(!Array.isArray(state.recurring)) state.recurring = [];
+if(!Array.isArray(state.goals)) state.goals = [];
+if(!Array.isArray(state.habits)) state.habits = [];
+if(!state.settings.budgets) state.settings.budgets = {};
+if(state.settings.savingsGoal===undefined || state.settings.savingsGoal===null) state.settings.savingsGoal = 0;
 saveState();
 function getEventCats(){ return state.settings.eventCats; }
 function getExpenseCats(){ return state.settings.expenseCats; }
@@ -850,6 +947,7 @@ function sumTx(list, type){ return list.filter(t=>t.type===type).reduce((s,t)=>s
 function renderToday(){
   renderTopDate();
   renderTravelModeChips();
+  renderHabitList();
   const t = todayStr();
   // 今日行程
   const todays = state.events.filter(e=>e.date===t).sort((a,b)=> (a.time||'').localeCompare(b.time||''));
@@ -1298,8 +1396,97 @@ function renderLedger(){
   wrap.querySelectorAll('.tx-item').forEach(el=>{
     el.onclick = ()=> openTxSheet(state.transactions.find(x=>x.id===el.dataset.id));
   });
+  renderRecurringList();
 }
 const CAT_EMOJI = {'餐飲':'🍜','交通':'🚗','進貨':'📦','房租':'🏠','油錢':'⛽','娛樂':'🎮','家庭':'👨‍👩‍👧','其他':'✨','手機店':'📱','客戶付款':'💰','蒸足':'🦶','AI服務':'🤖','投資':'📈'};
+
+/* ============================================================
+   固定收支：每月自動記一筆（房租、電話費、固定業務收入等）
+   ============================================================ */
+function generateRecurringTransactions(){
+  const now = new Date();
+  const currentYM = now.getFullYear()+'-'+pad(now.getMonth()+1);
+  let changed = false;
+  (state.recurring||[]).forEach(r=>{
+    if(r.lastGeneratedMonth === currentYM) return;
+    if(now.getDate() >= r.dayOfMonth){
+      state.transactions.push({
+        id: uid(), date: todayStr(), time: '00:00', type: r.type, amount: r.amount,
+        category: r.category, note: '(固定收支)'+(r.note?(' '+r.note):''), recurringId: r.id,
+      });
+      r.lastGeneratedMonth = currentYM;
+      changed = true;
+    }
+  });
+  if(changed) saveState();
+}
+function renderRecurringList(){
+  const wrap = document.getElementById('recurringListWrap');
+  if(!wrap) return;
+  const list = state.recurring || [];
+  wrap.innerHTML = list.length ? list.map(r=>`
+    <div class="tx-item" data-id="${r.id}">
+      <div class="tx-icon">${r.type==='income'?'💰':'📌'}</div>
+      <div>
+        <div class="li-title">${escapeHtml(r.category)}${r.note?(' · '+escapeHtml(r.note)):''}</div>
+        <div class="li-sub">每月 ${r.dayOfMonth} 號 · ${r.type==='income'?'收入':'支出'}</div>
+      </div>
+      <div class="tx-amt ${r.type}">${r.type==='income'?'+':'-'}${money(r.amount).replace('$','')}</div>
+    </div>`).join('') : `<div class="empty-hint" style="margin:10px;">還沒有設定固定收支</div>`;
+  wrap.querySelectorAll('.tx-item').forEach(el=>{
+    el.onclick = ()=> openRecurringSheet(state.recurring.find(x=>x.id===el.dataset.id));
+  });
+}
+function openRecurringSheet(r){
+  const isEdit = !!r;
+  r = r || { id:uid(), type:'expense', amount:'', category:'', note:'', dayOfMonth:1, lastGeneratedMonth:null };
+  let chosenType = r.type, chosenCat = r.category;
+  const initCats = chosenType==='income'?getIncomeCats():getExpenseCats();
+  if(!chosenCat) chosenCat = initCats[initCats.length-1];
+  const html = `
+    <div class="sheet-handle"></div>
+    <div class="sheet-title">${isEdit?'編輯固定收支':'新增固定收支'}</div>
+    <div class="field"><label>類型</label><div class="chip-group" id="r_type">
+      <span class="chip ${chosenType==='income'?'active':''}" data-v="income">收入</span>
+      <span class="chip ${chosenType==='expense'?'active':''}" data-v="expense">支出</span>
+    </div></div>
+    <div class="field"><label>金額</label><input id="r_amt" type="number" inputmode="numeric" value="${r.amount}"></div>
+    <div class="field"><label>每月幾號自動記一筆</label><input id="r_day" type="number" min="1" max="28" value="${r.dayOfMonth}"></div>
+    <div class="field"><label>分類</label><div class="chip-group" id="r_cat"></div></div>
+    <div class="field"><label>備註</label><input id="r_note" value="${escapeHtml(r.note)}" placeholder="例如：房租、電話費"></div>
+    <div class="btn-row">
+      ${isEdit?'<button class="btn btn-danger" id="r_del">刪除</button>':''}
+      <button class="btn btn-primary" id="r_save">${isEdit?'儲存變更':'新增'}</button>
+    </div>`;
+  openSheet(html);
+  function renderCats(){
+    const list = chosenType==='income'?getIncomeCats():getExpenseCats();
+    if(!list.includes(chosenCat)) chosenCat = list[list.length-1];
+    document.getElementById('r_cat').innerHTML = list.map(c=>`<span class="chip ${c===chosenCat?'active':''}" data-v="${c}">${c}</span>`).join('');
+  }
+  renderCats();
+  document.getElementById('r_type').onclick = e=>{ const c=e.target.closest('.chip'); if(!c)return; chosenType=c.dataset.v; setActiveChip('r_type',chosenType); renderCats(); };
+  document.getElementById('r_cat').addEventListener('click', e=>{ const c=e.target.closest('.chip'); if(!c)return; chosenCat=c.dataset.v; setActiveChip('r_cat',chosenCat); });
+  document.getElementById('r_save').onclick = ()=>{
+    const amt = Number(document.getElementById('r_amt').value);
+    const day = Math.min(28, Math.max(1, Number(document.getElementById('r_day').value)||1));
+    if(!amt || amt<=0){ toast('請輸入正確金額'); return; }
+    r.amount = amt; r.dayOfMonth = day; r.type = chosenType; r.category = chosenCat;
+    r.note = document.getElementById('r_note').value.trim();
+    if(!state.recurring) state.recurring = [];
+    const idx = state.recurring.findIndex(x=>x.id===r.id);
+    if(idx>-1) state.recurring[idx]=r; else state.recurring.push(r);
+    saveState(); closeSheet(); toast('已儲存固定收支');
+    generateRecurringTransactions(); renderLedger(); refreshAll();
+  };
+  if(isEdit){
+    document.getElementById('r_del').onclick = ()=>{
+      state.recurring = state.recurring.filter(x=>x.id!==r.id);
+      saveState(); closeSheet(); toast('已刪除'); renderRecurringList();
+    };
+  }
+}
+document.getElementById('addRecurringBtn').onclick = ()=> openRecurringSheet(null);
 function txRowHTML(t){
   return `<div class="tx-item" data-id="${t.id}">
     <div class="tx-icon">${CAT_EMOJI[t.category]||'💳'}</div>
@@ -1423,7 +1610,217 @@ function renderStats(){
     }).join('');
     el.innerHTML = donutHtml + legendHtml;
   }
+
+  renderBudgetWarnings();
+  renderSavingsGoalProgress();
+  renderGoalsList();
 }
+
+/* ============================================================
+   預算超支警示
+   ============================================================ */
+function getMonthCatSpend(){
+  const {start,end} = monthRange();
+  const monthExp = state.transactions.filter(t=>t.type==='expense' && t.date>=start && t.date<=end);
+  const catSum = {};
+  monthExp.forEach(t=> catSum[t.category]=(catSum[t.category]||0)+Number(t.amount));
+  return catSum;
+}
+function getBudgetWarnings(){
+  const catSum = getMonthCatSpend();
+  const budgets = state.settings.budgets || {};
+  return Object.entries(budgets)
+    .filter(([cat,budget])=> budget>0 && (catSum[cat]||0) > budget)
+    .map(([cat,budget])=>({ cat, budget, spent: catSum[cat]||0 }));
+}
+function renderBudgetWarnings(){
+  const warnings = getBudgetWarnings();
+  const section = document.getElementById('budgetWarningSection');
+  if(!section) return;
+  if(warnings.length){
+    section.style.display = 'block';
+    document.getElementById('budgetWarningList').innerHTML = warnings.map(w=>`
+      <div style="margin-bottom:8px;">
+        <div class="li-sub" style="color:var(--expense);font-weight:700;">${escapeHtml(w.cat)}：已花 ${money(w.spent)} / 預算 ${money(w.budget)}</div>
+      </div>`).join('');
+  } else {
+    section.style.display = 'none';
+  }
+}
+function renderBudgetSettings(){
+  const wrap = document.getElementById('budgetSettingsWrap');
+  if(!wrap) return;
+  const cats = getExpenseCats();
+  const budgets = state.settings.budgets || {};
+  wrap.innerHTML = cats.map(c=>`
+    <div class="field" style="margin-bottom:10px;">
+      <label>${escapeHtml(c)}</label>
+      <input type="number" inputmode="numeric" class="budget-input" data-cat="${escapeHtml(c)}" placeholder="不設定＝不警示" value="${budgets[c]?budgets[c]:''}">
+    </div>`).join('');
+  wrap.querySelectorAll('.budget-input').forEach(inp=>{
+    inp.addEventListener('change', ()=>{
+      if(!state.settings.budgets) state.settings.budgets = {};
+      const val = Number(inp.value);
+      if(val>0) state.settings.budgets[inp.dataset.cat] = val;
+      else delete state.settings.budgets[inp.dataset.cat];
+      saveState(); toast('已更新預算設定');
+    });
+  });
+}
+
+/* ============================================================
+   存錢目標：追蹤全部歷史累積結餘 vs 目標金額
+   ============================================================ */
+function getTotalBalance(){
+  return sumTx(state.transactions,'income') - sumTx(state.transactions,'expense');
+}
+function renderSavingsGoalProgress(){
+  const section = document.getElementById('savingsGoalSection');
+  if(!section) return;
+  const goal = Number(state.settings.savingsGoal)||0;
+  if(goal<=0){ section.style.display='none'; return; }
+  section.style.display = 'block';
+  const current = getTotalBalance();
+  const pct = Math.max(0, Math.min(100, Math.round(current/goal*100)));
+  document.getElementById('savingsGoalWrap').innerHTML = `
+    <div style="display:flex; justify-content:space-between; font-size:12.5px; color:var(--text-1); margin-bottom:8px;">
+      <span>目前累積：${money(current)}</span><span>目標：${money(goal)}</span>
+    </div>
+    <div class="cat-bar-track" style="height:12px;">
+      <div class="cat-bar-fill" style="width:${pct}%;"></div>
+    </div>
+    <div style="text-align:center; margin-top:8px; font-size:13px; color:var(--neon-2); font-weight:700;">${pct}%</div>`;
+}
+
+/* ============================================================
+   長期目標追蹤
+   ============================================================ */
+function renderGoalsList(){
+  const wrap = document.getElementById('goalsListWrap');
+  if(!wrap) return;
+  const list = [...(state.goals||[])].sort((a,b)=>{
+    if(a.done!==b.done) return a.done?1:-1;
+    return (a.deadline||'9999-99-99').localeCompare(b.deadline||'9999-99-99');
+  });
+  wrap.innerHTML = list.length ? list.map(g=>`
+    <div class="list-item" data-id="${g.id}" style="${g.done?'opacity:.5;':''}">
+      <div class="tag-dot" style="background:${g.done?'#5d698c':'var(--neon)'}"></div>
+      <div style="flex:1;">
+        <div class="li-title" style="${g.done?'text-decoration:line-through;':''}">${escapeHtml(g.title)}</div>
+        <div class="li-sub">${g.deadline?('期限 '+g.deadline):'沒有設定期限'}${g.note?(' · '+escapeHtml(g.note)):''}</div>
+      </div>
+      <div class="li-time">${g.done?'✅':'⏳'}</div>
+    </div>`).join('') : `<div class="empty-hint" style="margin:10px;">還沒有設定長期目標</div>`;
+  wrap.querySelectorAll('.list-item').forEach(el=>{
+    el.onclick = ()=> openGoalSheet(state.goals.find(x=>x.id===el.dataset.id));
+  });
+}
+function openGoalSheet(g){
+  const isEdit = !!g;
+  g = g || { id:uid(), title:'', deadline:'', note:'', done:false };
+  const html = `
+    <div class="sheet-handle"></div>
+    <div class="sheet-title">${isEdit?'編輯目標':'新增長期目標'}</div>
+    <div class="field"><label>目標名稱</label><input id="g_title" value="${escapeHtml(g.title)}" placeholder="例如：存到創業基金"></div>
+    <div class="field"><label>期限（選填）</label><input id="g_deadline" type="date" value="${g.deadline||''}"></div>
+    <div class="field"><label>備註</label><textarea id="g_note" placeholder="補充說明...">${escapeHtml(g.note||'')}</textarea></div>
+    ${isEdit?`<div class="field"><label class="settings-row" style="padding:0;"><span style="flex:1;">標記為已達成</span><input type="checkbox" id="g_done" ${g.done?'checked':''}></label></div>`:''}
+    <div class="btn-row">
+      ${isEdit?'<button class="btn btn-danger" id="g_del">刪除</button>':''}
+      <button class="btn btn-primary" id="g_save">${isEdit?'儲存變更':'新增目標'}</button>
+    </div>`;
+  openSheet(html);
+  document.getElementById('g_save').onclick = ()=>{
+    const title = document.getElementById('g_title').value.trim();
+    if(!title){ toast('請輸入目標名稱'); return; }
+    g.title = title; g.deadline = document.getElementById('g_deadline').value;
+    g.note = document.getElementById('g_note').value.trim();
+    if(isEdit) g.done = document.getElementById('g_done').checked;
+    if(!state.goals) state.goals = [];
+    const idx = state.goals.findIndex(x=>x.id===g.id);
+    if(idx>-1) state.goals[idx]=g; else state.goals.push(g);
+    saveState(); closeSheet(); toast('已儲存目標'); renderGoalsList();
+  };
+  if(isEdit){
+    document.getElementById('g_del').onclick = ()=>{
+      state.goals = state.goals.filter(x=>x.id!==g.id);
+      saveState(); closeSheet(); toast('已刪除目標'); renderGoalsList();
+    };
+  }
+}
+document.getElementById('addGoalBtn').onclick = ()=> openGoalSheet(null);
+
+/* ============================================================
+   習慣追蹤
+   ============================================================ */
+function habitStreak(habit){
+  let streak = 0;
+  let d = new Date();
+  // 若今天還沒打卡，從昨天開始算連續天數；若今天已打卡，從今天開始算
+  if(!(habit.doneDates||[]).includes(fmtDate(d))) d.setDate(d.getDate()-1);
+  while((habit.doneDates||[]).includes(fmtDate(d))){
+    streak++;
+    d.setDate(d.getDate()-1);
+  }
+  return streak;
+}
+function renderHabitList(){
+  const wrap = document.getElementById('habitListWrap');
+  if(!wrap) return;
+  const list = state.habits || [];
+  const t = todayStr();
+  wrap.innerHTML = list.length ? list.map(h=>{
+    const doneToday = (h.doneDates||[]).includes(t);
+    const streak = habitStreak(h);
+    return `<div class="list-item" data-id="${h.id}">
+      <div class="tag-dot" style="background:${doneToday?'var(--income)':'var(--line)'}"></div>
+      <div style="flex:1;">
+        <div class="li-title">${escapeHtml(h.name)}</div>
+        <div class="li-sub">連續 ${streak} 天${streak>0?' 🔥':''}</div>
+      </div>
+      <div class="li-time" style="font-size:20px;">${doneToday?'✅':'⬜'}</div>
+      <div class="li-nav-btn" data-habit-del="${h.id}" title="刪除習慣" style="margin-left:6px;">🗑️</div>
+    </div>`;
+  }).join('') : `<div class="empty-hint">還沒有習慣，點右上角新增一個吧</div>`;
+  wrap.querySelectorAll('.list-item').forEach(el=>{
+    el.onclick = (evt)=>{
+      if(evt.target.closest('[data-habit-del]')) return;
+      toggleHabitToday(el.dataset.id);
+    };
+  });
+  wrap.querySelectorAll('[data-habit-del]').forEach(btn=>{
+    btn.onclick = (evt)=>{
+      evt.stopPropagation();
+      state.habits = state.habits.filter(x=>x.id!==btn.dataset.habitDel);
+      saveState(); toast('已刪除習慣'); renderHabitList();
+    };
+  });
+}
+function toggleHabitToday(id){
+  const h = (state.habits||[]).find(x=>x.id===id);
+  if(!h) return;
+  const t = todayStr();
+  if(!h.doneDates) h.doneDates = [];
+  const idx = h.doneDates.indexOf(t);
+  if(idx>-1) h.doneDates.splice(idx,1);
+  else h.doneDates.push(t);
+  saveState(); renderHabitList();
+}
+document.getElementById('addHabitBtn').onclick = ()=>{
+  openSheet(`
+    <div class="sheet-handle"></div>
+    <div class="sheet-title">新增習慣</div>
+    <div class="field"><label>習慣名稱</label><input id="h_name" placeholder="例如：喝水2000cc、運動30分鐘"></div>
+    <button class="btn btn-primary" style="width:100%;" id="h_save">新增</button>
+  `);
+  document.getElementById('h_save').onclick = ()=>{
+    const name = document.getElementById('h_name').value.trim();
+    if(!name){ toast('請輸入習慣名稱'); return; }
+    if(!state.habits) state.habits = [];
+    state.habits.push({ id: uid(), name, doneDates: [] });
+    saveState(); closeSheet(); toast('已新增習慣'); renderHabitList();
+  };
+};
 
 /* ============================================================
    Sheet 開關
@@ -1757,18 +2154,114 @@ function renderCatManager(){
   renderCatMgrGroup('mgrExpenseCats', getExpenseCats(), 'expenseCats');
   renderCatMgrGroup('mgrIncomeCats', getIncomeCats(), 'incomeCats');
   document.getElementById('incomeGoalInput').value = state.settings.incomeGoal || '';
-  document.getElementById('gptEndpointInput').value = state.settings.gptEndpoint || '';
+  document.getElementById('savingsGoalInput').value = state.settings.savingsGoal || '';
   document.getElementById('mapsApiKeyInput').value = state.settings.mapsApiKey || '';
+  renderAiEndpointList();
+  renderBudgetSettings();
   if(typeof updateGcalStatusUI === 'function') updateGcalStatusUI();
 }
 document.getElementById('mapsApiKeyInput').addEventListener('change', e=>{
   state.settings.mapsApiKey = e.target.value.trim();
   saveState(); toast('已儲存 Maps API Key');
 });
-document.getElementById('gptEndpointInput').addEventListener('change', e=>{
-  state.settings.gptEndpoint = e.target.value.trim();
-  saveState(); toast('已儲存中繼服務網址');
-});
+
+/* ---- 多 AI 引擎管理：可新增多組 Worker 網址並切換使用中的引擎 ---- */
+function renderAiEndpointList(){
+  const list = state.settings.aiEndpoints || [];
+  const wrap = document.getElementById('aiEndpointList');
+  if(!wrap) return;
+  if(!list.length){ wrap.innerHTML = `<div class="empty-hint">還沒有設定任何 AI 引擎</div>`; return; }
+  wrap.innerHTML = list.map(ep=>`
+    <div class="settings-row" data-ep-id="${ep.id}">
+      <label style="flex:1; display:flex; gap:10px; align-items:flex-start; cursor:pointer;">
+        <input type="radio" name="activeAiEp" ${state.settings.activeAiEndpointId===ep.id?'checked':''} class="ai-ep-radio" data-id="${ep.id}" style="margin-top:4px;">
+        <span><b>${escapeHtml(ep.name)}</b><br><span style="font-size:11px;color:var(--text-2);word-break:break-all;">${escapeHtml(ep.url)}</span></span>
+      </label>
+      <button class="btn btn-ghost" style="padding:6px 10px;font-size:12px;flex-shrink:0;" data-del-ep="${ep.id}">刪除</button>
+    </div>`).join('');
+  wrap.querySelectorAll('.ai-ep-radio').forEach(r=>{
+    r.onchange = ()=>{ state.settings.activeAiEndpointId = r.dataset.id; saveState(); toast('已切換 AI 引擎：'+list.find(e=>e.id===r.dataset.id).name); };
+  });
+  wrap.querySelectorAll('[data-del-ep]').forEach(btn=>{
+    btn.onclick = ()=>{
+      state.settings.aiEndpoints = state.settings.aiEndpoints.filter(e=>e.id!==btn.dataset.delEp);
+      if(state.settings.activeAiEndpointId === btn.dataset.delEp){
+        state.settings.activeAiEndpointId = (state.settings.aiEndpoints[0] && state.settings.aiEndpoints[0].id) || null;
+      }
+      saveState(); renderAiEndpointList();
+    };
+  });
+}
+document.getElementById('addAiEndpointBtn').onclick = ()=>{
+  const name = document.getElementById('newAiEndpointName').value.trim();
+  const url = document.getElementById('newAiEndpointUrl').value.trim();
+  if(!name || !url){ toast('請填寫名稱與網址'); return; }
+  const id = uid();
+  state.settings.aiEndpoints = [...(state.settings.aiEndpoints||[]), { id, name, url }];
+  if(!state.settings.activeAiEndpointId) state.settings.activeAiEndpointId = id;
+  saveState();
+  document.getElementById('newAiEndpointName').value = '';
+  document.getElementById('newAiEndpointUrl').value = '';
+  renderAiEndpointList();
+  toast('已新增 AI 引擎：'+name);
+};
+function getActiveAiEndpointUrl(){
+  const list = state.settings.aiEndpoints || [];
+  const active = list.find(e=>e.id === state.settings.activeAiEndpointId);
+  return active ? active.url : (state.settings.gptEndpoint || '');
+}
+
+/* ---- 深色/淺色主題切換 ---- */
+function applyTheme(){
+  const theme = state.settings.theme || 'dark';
+  document.documentElement.setAttribute('data-theme', theme);
+  const sw = document.getElementById('themeSwitch');
+  if(sw) sw.classList.toggle('on', theme==='light');
+}
+document.getElementById('themeSwitch').onclick = ()=>{
+  state.settings.theme = (state.settings.theme==='light') ? 'dark' : 'light';
+  saveState(); applyTheme();
+};
+
+/* ---- 全域搜尋：跨行程與記帳搜尋 ---- */
+function openGlobalSearch(){
+  openSheet(`
+    <div class="sheet-handle"></div>
+    <div class="sheet-title">🔍 搜尋</div>
+    <input id="globalSearchInput" placeholder="搜尋行程、記帳、備註、地址..." style="width:100%;background:var(--bg-1);border:1px solid var(--line);color:var(--text-0);border-radius:12px;padding:12px;font-size:14.5px;margin-bottom:14px;">
+    <div id="globalSearchResults"></div>
+  `);
+  const input = document.getElementById('globalSearchInput');
+  setTimeout(()=> input.focus(), 100);
+  input.addEventListener('input', ()=> renderGlobalSearchResults(input.value.trim()));
+  renderGlobalSearchResults('');
+}
+function renderGlobalSearchResults(q){
+  const wrap = document.getElementById('globalSearchResults');
+  if(!q){ wrap.innerHTML = `<div class="empty-hint">輸入關鍵字開始搜尋</div>`; return; }
+  const lower = q.toLowerCase();
+  const evMatches = state.events.filter(e=>
+    (e.title||'').toLowerCase().includes(lower) ||
+    (e.note||'').toLowerCase().includes(lower) ||
+    (e.address||'').toLowerCase().includes(lower)
+  );
+  const txMatches = state.transactions.filter(t=>
+    (t.category||'').toLowerCase().includes(lower) ||
+    (t.note||'').toLowerCase().includes(lower)
+  );
+  let html = '';
+  if(evMatches.length) html += `<div class="section-title" style="margin-top:2px;">行程（${evMatches.length}）</div>` + evMatches.map(eventRowHTML).join('');
+  if(txMatches.length) html += `<div class="section-title" style="margin-top:14px;">記帳（${txMatches.length}）</div>` + txMatches.map(txRowHTML).join('');
+  if(!evMatches.length && !txMatches.length) html = `<div class="empty-hint">找不到符合「${escapeHtml(q)}」的結果</div>`;
+  wrap.innerHTML = html;
+  wrap.querySelectorAll('.list-item').forEach(el=>{
+    el.onclick = ()=>{ const found = state.events.find(x=>x.id===el.dataset.id); closeSheet(); setTimeout(()=> found && openEventSheet(found), 250); };
+  });
+  wrap.querySelectorAll('.tx-item').forEach(el=>{
+    el.onclick = ()=>{ const found = state.transactions.find(x=>x.id===el.dataset.id); closeSheet(); setTimeout(()=> found && openTxSheet(found), 250); };
+  });
+}
+document.getElementById('openSearchBtn').onclick = openGlobalSearch;
 function renderCatMgrGroup(elId, list, settingsKey){
   const el = document.getElementById(elId);
   el.innerHTML = list.map(c=>`<span class="chip" data-cat="${escapeHtml(c)}">${escapeHtml(c)}<span class="cat-del">×</span></span>`).join('');
@@ -1795,6 +2288,10 @@ document.getElementById('addExpenseCatBtn').onclick = ()=> addCategory('newExpen
 document.getElementById('addIncomeCatBtn').onclick = ()=> addCategory('newIncomeCat','incomeCats');
 document.getElementById('incomeGoalInput').addEventListener('change', e=>{
   state.settings.incomeGoal = Number(e.target.value)||0;
+  saveState(); refreshAll();
+});
+document.getElementById('savingsGoalInput').addEventListener('change', e=>{
+  state.settings.savingsGoal = Number(e.target.value)||0;
   saveState(); refreshAll();
 });
 
@@ -1910,6 +2407,75 @@ async function googleDeleteEvent(ev){
 }
 document.getElementById('connectGoogleBtn').onclick = syncGoogleCalendar;
 
+/* ============================================================
+   資料匯出／匯入備份
+   ============================================================ */
+document.getElementById('exportDataBtn').onclick = ()=>{
+  const dataStr = JSON.stringify(state, null, 2);
+  const blob = new Blob([dataStr], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `ai-secretary-backup-${todayStr()}.json`;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(()=> URL.revokeObjectURL(url), 3000);
+  toast('備份檔案已下載');
+};
+
+document.getElementById('importDataBtn').onclick = ()=>{
+  document.getElementById('importDataFile').click();
+};
+document.getElementById('importDataFile').addEventListener('change', (e)=>{
+  const file = e.target.files[0];
+  if(!file) return;
+  const reader = new FileReader();
+  reader.onload = (evt)=>{
+    try{
+      const parsed = JSON.parse(evt.target.result);
+      if(!parsed || !Array.isArray(parsed.events) || !Array.isArray(parsed.transactions)){
+        toast('檔案格式不正確，無法匯入');
+        return;
+      }
+      openSheet(`
+        <div class="sheet-handle"></div>
+        <div class="sheet-title">確定要匯入這份備份？</div>
+        <p style="font-size:13.5px;color:var(--text-1);line-height:1.7;">
+          匯入後會<b style="color:var(--expense);">覆蓋</b>目前所有資料（目前：行事曆 ${state.events.length} 筆、記帳 ${state.transactions.length} 筆），此動作無法復原。<br><br>
+          備份檔內容：行事曆 ${parsed.events.length} 筆、記帳 ${parsed.transactions.length} 筆
+        </p>
+        <div class="btn-row">
+          <button class="btn btn-ghost" style="flex:1;" onclick="closeSheet()">取消</button>
+          <button class="btn btn-danger" style="flex:1;" id="confirmImport">確定匯入</button>
+        </div>
+      `);
+      document.getElementById('confirmImport').onclick = ()=>{
+        // 補齊缺少的欄位，避免舊版備份缺欄位造成錯誤
+        state = {
+          events: parsed.events || [],
+          transactions: parsed.transactions || [],
+          chatHistory: Array.isArray(parsed.chatHistory) ? parsed.chatHistory : [],
+          recurring: Array.isArray(parsed.recurring) ? parsed.recurring : [],
+          goals: Array.isArray(parsed.goals) ? parsed.goals : [],
+          habits: Array.isArray(parsed.habits) ? parsed.habits : [],
+          settings: Object.assign({
+            googleConnected:false, eventCats:[...DEFAULT_EVENT_CATS], expenseCats:[...DEFAULT_EXPENSE_CATS],
+            incomeCats:[...DEFAULT_INCOME_CATS], incomeGoal:0, gptEndpoint:'', travelMode:'driving',
+            lastGoogleSync:null, mapsApiKey:'', theme:'dark', aiEndpoints:[], activeAiEndpointId:null,
+            budgets:{}, savingsGoal:0,
+          }, parsed.settings || {}),
+        };
+        saveState(); closeSheet(); toast('已匯入備份'); applyTheme(); refreshAll(); renderCatManager();
+      };
+    }catch(err){
+      toast('讀取檔案失敗：'+err.message);
+    }
+  };
+  reader.readAsText(file);
+  e.target.value = '';
+});
+
 document.getElementById('clearDataBtn').onclick = ()=>{
   openSheet(`
     <div class="sheet-handle"></div>
@@ -1922,12 +2488,14 @@ document.getElementById('clearDataBtn').onclick = ()=>{
   `);
   document.getElementById('confirmClear').onclick = ()=>{
     state = {
-      events:[], transactions:[], chatHistory:[],
+      events:[], transactions:[], chatHistory:[], recurring:[], goals:[], habits:[],
       settings:{ googleConnected:false, eventCats:[...DEFAULT_EVENT_CATS], expenseCats:[...DEFAULT_EXPENSE_CATS],
                  incomeCats:[...DEFAULT_INCOME_CATS], incomeGoal:0, gptEndpoint: state.settings.gptEndpoint||'',
-                 travelMode:'driving', lastGoogleSync:null, mapsApiKey: state.settings.mapsApiKey||'' }
+                 travelMode:'driving', lastGoogleSync:null, mapsApiKey: state.settings.mapsApiKey||'',
+                 theme: state.settings.theme||'dark', aiEndpoints: state.settings.aiEndpoints||[],
+                 activeAiEndpointId: state.settings.activeAiEndpointId||null, budgets:{}, savingsGoal:0 }
     };
-    saveState(); closeSheet(); toast('資料已清除'); refreshAll();
+    saveState(); closeSheet(); toast('資料已清除'); applyTheme(); refreshAll();
   };
 };
 
@@ -2006,7 +2574,7 @@ async function sendChatMessage(){
   input.value = '';
   addChatMessage('user', text);
 
-  const endpoint = state.settings.gptEndpoint;
+  const endpoint = getActiveAiEndpointUrl();
   if(!endpoint){
     addChatMessage('assistant', '請先到「設定」頁填寫你的中繼服務網址（Cloudflare Worker），才能開始跟我聊天喔。');
     return;
@@ -2063,6 +2631,8 @@ document.getElementById('chatInput').addEventListener('keydown', e=>{
 /* ============================================================
    初始化
    ============================================================ */
+applyTheme();
+generateRecurringTransactions();
 refreshNotifStatus();
 renderToday();
 renderCalendar();

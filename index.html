@@ -92,7 +92,8 @@ body{
 .section-title .more{color:var(--neon-2); font-weight:600; font-size:12px;}
 
 /* ===== 機器人 (純 CSS/SVG 畫出，貓耳白殼黑臉藍眼) ===== */
-.robot-wrap{display:flex; gap:12px; align-items:flex-start;}
+.robot-wrap{display:flex; gap:12px; align-items:flex-start; cursor:pointer;}
+.robot-wrap .chat-hint{font-size:10.5px; color:var(--neon-2); margin-top:6px; opacity:.85;}
 .robot{width:64px;height:64px;flex-shrink:0;position:relative;animation:botFloat 3.2s ease-in-out infinite;}
 @keyframes botFloat{0%,100%{transform:translateY(0)}50%{transform:translateY(-4px)}}
 .robot svg{width:100%;height:100%;filter:drop-shadow(0 0 10px rgba(78,168,255,.45));}
@@ -332,6 +333,57 @@ body{
   box-shadow:var(--white-glow); opacity:0; pointer-events:none; transition:.25s;
 }
 .toast.show{opacity:1; bottom:190px;}
+
+/* ===== 隨身秘書聊天視窗 ===== */
+.chat-overlay{
+  position:fixed; inset:0; background:var(--bg-0); z-index:250;
+  display:none; flex-direction:column;
+}
+.chat-overlay.show{display:flex;}
+.chat-header{
+  display:flex; align-items:center; gap:10px; padding:16px 16px 12px;
+  border-bottom:1px solid var(--line); flex-shrink:0;
+}
+.chat-header .robot{width:38px;height:38px;}
+.chat-header .info{flex:1;}
+.chat-header .info .name{font-weight:800; font-size:15px;}
+.chat-header .info .status{font-size:11px; color:var(--income);}
+.chat-close{
+  width:34px;height:34px;border-radius:50%; background:var(--card-solid);
+  border:1px solid var(--line); color:var(--text-1); font-size:16px;
+  display:flex;align-items:center;justify-content:center;
+}
+.chat-messages{
+  flex:1; overflow-y:auto; padding:16px; display:flex; flex-direction:column; gap:12px;
+}
+.msg-row{display:flex; gap:8px; max-width:88%;}
+.msg-row.user{align-self:flex-end; flex-direction:row-reverse;}
+.msg-row .msg-avatar{width:28px;height:28px;flex-shrink:0;}
+.msg-bubble{
+  padding:10px 13px; border-radius:16px; font-size:13.5px; line-height:1.55;
+  white-space:pre-wrap; word-break:break-word;
+}
+.msg-row.assistant .msg-bubble{background:var(--card-solid); border:1px solid var(--line); border-bottom-left-radius:4px;}
+.msg-row.user .msg-bubble{background:linear-gradient(135deg,#2266d0,#4ea8ff); color:#fff; border-bottom-right-radius:4px;}
+.typing-dots{display:flex; gap:4px; padding:12px 14px;}
+.typing-dots span{width:6px;height:6px;border-radius:50%;background:var(--neon-2); animation:typingBounce 1.2s infinite;}
+.typing-dots span:nth-child(2){animation-delay:.2s;} .typing-dots span:nth-child(3){animation-delay:.4s;}
+@keyframes typingBounce{0%,60%,100%{transform:translateY(0); opacity:.5;} 30%{transform:translateY(-4px); opacity:1;}}
+.chat-input-row{
+  display:flex; gap:8px; padding:12px 14px calc(14px + env(safe-area-inset-bottom));
+  border-top:1px solid var(--line); flex-shrink:0; background:var(--bg-0);
+}
+.chat-input-row input{
+  flex:1; background:var(--bg-1); border:1px solid var(--line); color:var(--text-0);
+  border-radius:22px; padding:12px 16px; font-size:14px; font-family:inherit;
+}
+.chat-send-btn{
+  width:44px;height:44px;border-radius:50%; background:linear-gradient(135deg,#4ea8ff,#2266d0);
+  border:none; color:#fff; display:flex;align-items:center;justify-content:center; flex-shrink:0;
+}
+.chat-empty-hint{
+  text-align:center; color:var(--text-2); font-size:12.5px; margin-top:30px; line-height:1.8;
+}
 </style>
 </head>
 <body>
@@ -351,9 +403,12 @@ body{
 
     <div class="section">
       <div class="card" style="padding:16px;">
-        <div class="robot-wrap">
+        <div class="robot-wrap" id="openChatBtn">
           <div class="robot"></div>
-          <div class="bubble" id="robotTip">你好呀，我是你的 AI 秘書～今天也一起加油！</div>
+          <div style="flex:1;">
+            <div class="bubble" id="robotTip">你好呀，我是你的 AI 秘書～今天也一起加油！</div>
+            <div class="chat-hint">💬 點我聊聊，問我股票邏輯、今日運勢或任何問題</div>
+          </div>
         </div>
       </div>
     </div>
@@ -453,6 +508,19 @@ body{
         <div class="settings-row">
           <div><div class="t">推播通知</div><div class="s" id="notifStatusText">尚未開啟權限</div></div>
           <button class="btn btn-ghost" style="padding:8px 14px;font-size:12.5px;" id="requestNotifBtn">開啟</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="section">
+      <div class="section-title">隨身秘書（AI）設定</div>
+      <div class="card" style="padding:16px;">
+        <div class="field" style="margin-bottom:10px;">
+          <label>中繼服務網址（Cloudflare Worker）</label>
+          <input id="gptEndpointInput" type="url" placeholder="https://xxx.你的帳號.workers.dev">
+        </div>
+        <div class="pwa-hint">
+          需要先部署一支 Cloudflare Worker 來安全存放 AI API Key（不能直接把 Key 寫在這支網頁裡）。程式碼另外提供，部署完把網址貼在上面即可。
         </div>
       </div>
     </div>
@@ -567,6 +635,25 @@ body{
   </div>
 
   <div class="toast" id="toast"></div>
+
+  <!-- ===== 隨身秘書聊天視窗 ===== -->
+  <div class="chat-overlay" id="chatOverlay">
+    <div class="chat-header">
+      <div class="robot" id="chatHeaderRobot"></div>
+      <div class="info">
+        <div class="name">AI 隨身秘書</div>
+        <div class="status" id="chatStatus">● 待命中</div>
+      </div>
+      <div class="chat-close" id="closeChatBtn">✕</div>
+    </div>
+    <div class="chat-messages" id="chatMessages"></div>
+    <div class="chat-input-row">
+      <input id="chatInput" placeholder="問我股票邏輯、今日運勢、任何問題..." autocomplete="off">
+      <button class="chat-send-btn" id="chatSendBtn">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M4 12h15M13 6l6 6-6 6" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      </button>
+    </div>
+  </div>
 </div>
 
 <script>
@@ -583,7 +670,8 @@ function loadState(){
   return {
     events: [],        // {id,title,date,time,category,note,reminder,notified,done}
     transactions: [],   // {id,date,time,type,amount,category,note}
-    settings: { googleConnected:false, eventCats:null, expenseCats:null, incomeCats:null, incomeGoal:0 }
+    chatHistory: [],     // {role:'user'|'assistant', content, time}
+    settings: { googleConnected:false, eventCats:null, expenseCats:null, incomeCats:null, incomeGoal:0, gptEndpoint:'' }
   };
 }
 let state = loadState();
@@ -624,6 +712,8 @@ if(!state.settings.eventCats || !state.settings.eventCats.length) state.settings
 if(!state.settings.expenseCats || !state.settings.expenseCats.length) state.settings.expenseCats = [...DEFAULT_EXPENSE_CATS];
 if(!state.settings.incomeCats || !state.settings.incomeCats.length) state.settings.incomeCats = [...DEFAULT_INCOME_CATS];
 if(state.settings.incomeGoal===undefined || state.settings.incomeGoal===null) state.settings.incomeGoal = 0;
+if(state.settings.gptEndpoint===undefined) state.settings.gptEndpoint = '';
+if(!Array.isArray(state.chatHistory)) state.chatHistory = [];
 saveState();
 function getEventCats(){ return state.settings.eventCats; }
 function getExpenseCats(){ return state.settings.expenseCats; }
@@ -1364,7 +1454,12 @@ function renderCatManager(){
   renderCatMgrGroup('mgrExpenseCats', getExpenseCats(), 'expenseCats');
   renderCatMgrGroup('mgrIncomeCats', getIncomeCats(), 'incomeCats');
   document.getElementById('incomeGoalInput').value = state.settings.incomeGoal || '';
+  document.getElementById('gptEndpointInput').value = state.settings.gptEndpoint || '';
 }
+document.getElementById('gptEndpointInput').addEventListener('change', e=>{
+  state.settings.gptEndpoint = e.target.value.trim();
+  saveState(); toast('已儲存中繼服務網址');
+});
 function renderCatMgrGroup(elId, list, settingsKey){
   const el = document.getElementById(elId);
   el.innerHTML = list.map(c=>`<span class="chip" data-cat="${escapeHtml(c)}">${escapeHtml(c)}<span class="cat-del">×</span></span>`).join('');
@@ -1424,10 +1519,123 @@ document.getElementById('clearDataBtn').onclick = ()=>{
     </div>
   `);
   document.getElementById('confirmClear').onclick = ()=>{
-    state = { events:[], transactions:[], settings:{googleConnected:false} };
+    state = {
+      events:[], transactions:[], chatHistory:[],
+      settings:{ googleConnected:false, eventCats:[...DEFAULT_EVENT_CATS], expenseCats:[...DEFAULT_EXPENSE_CATS],
+                 incomeCats:[...DEFAULT_INCOME_CATS], incomeGoal:0, gptEndpoint: state.settings.gptEndpoint||'' }
+    };
     saveState(); closeSheet(); toast('資料已清除'); refreshAll();
   };
 };
+
+/* ============================================================
+   隨身秘書聊天（接 GPT，透過 Cloudflare Worker 中繼避免曝露金鑰）
+   ============================================================ */
+const CHAT_SYSTEM_PROMPT = `你是使用者的專屬 AI 秘書，個性專業、有紀律、溫暖但不浮誇，用繁體中文回答。
+規則：
+1. 一般知識問題直接簡潔正確地回答。
+2. 遇到股票／投資相關問題：只能討論策略、邏輯、名詞解釋與風險觀念，絕對不要提供任何即時股價、精確漲跌幅、或「保證獲利」之類的說法，因為你沒有即時行情資料。如果使用者問即時數字，提醒他去看自己的行情系統確認。
+3. 今日運勢類問題可以用輕鬆口吻回答，但要註明這只是娛樂參考，不是命理專業建議。
+4. 回答盡量簡短口語化，像貼心秘書在對話，不要長篇大論或條列轟炸，除非使用者要求詳細說明。
+5. 不確定的事情要老實說不知道，不要編造數字或事實。`;
+
+function buildChatContext(){
+  const t = todayStr();
+  const events = state.events.filter(e=>e.date===t).sort((a,b)=>(a.time||'').localeCompare(b.time||''));
+  const {start,end} = monthRange();
+  const monthTx = state.transactions.filter(x=>x.date>=start && x.date<=end);
+  const inc = sumTx(monthTx,'income'), exp = sumTx(monthTx,'expense');
+  const goal = Number(state.settings.incomeGoal)||0;
+  return `[使用者目前資料，僅供參考回答用，不要主動逐條複誦]
+今天日期：${t}
+今日行程：${events.length? events.map(e=>e.time+' '+e.title).join('、') : '無'}
+本月收入：${inc}｜本月支出：${exp}｜本月結餘：${inc-exp}${goal?('｜本月收入目標：'+goal):''}`;
+}
+
+function openChat(){
+  document.getElementById('chatOverlay').classList.add('show');
+  renderChatMessages();
+  setTimeout(()=> document.getElementById('chatMessages').scrollTop = 999999, 50);
+}
+function closeChat(){ document.getElementById('chatOverlay').classList.remove('show'); }
+document.getElementById('openChatBtn').onclick = openChat;
+document.getElementById('closeChatBtn').onclick = closeChat;
+
+function chatBubbleHTML(m){
+  const isUser = m.role==='user';
+  return `<div class="msg-row ${isUser?'user':'assistant'}">
+    ${isUser?'':`<div class="robot msg-avatar"></div>`}
+    <div class="msg-bubble">${escapeHtml(m.content)}</div>
+  </div>`;
+}
+function renderChatMessages(){
+  const wrap = document.getElementById('chatMessages');
+  if(!state.chatHistory.length){
+    wrap.innerHTML = `<div class="chat-empty-hint">還沒有對話紀錄～<br>可以問我股票邏輯、今日運勢，或任何問題唷 🙂</div>`;
+    return;
+  }
+  wrap.innerHTML = state.chatHistory.map(chatBubbleHTML).join('');
+  // 補上機器人頭像 SVG（因為是動態插入的 DOM）
+  wrap.querySelectorAll('.msg-avatar').forEach(el=> el.innerHTML = ROBOT_SVG);
+  wrap.scrollTop = wrap.scrollHeight;
+}
+function addChatMessage(role, content){
+  state.chatHistory.push({ role, content, time: Date.now() });
+  if(state.chatHistory.length>60) state.chatHistory = state.chatHistory.slice(-60);
+  saveState();
+  renderChatMessages();
+}
+function showTyping(){
+  const wrap = document.getElementById('chatMessages');
+  const el = document.createElement('div');
+  el.className = 'msg-row assistant'; el.id = 'typingRow';
+  el.innerHTML = `<div class="robot msg-avatar"></div><div class="msg-bubble typing-dots"><span></span><span></span><span></span></div>`;
+  wrap.appendChild(el);
+  el.querySelector('.msg-avatar').innerHTML = ROBOT_SVG;
+  wrap.scrollTop = wrap.scrollHeight;
+}
+function hideTyping(){ const el = document.getElementById('typingRow'); if(el) el.remove(); }
+
+async function sendChatMessage(){
+  const input = document.getElementById('chatInput');
+  const text = input.value.trim();
+  if(!text) return;
+  input.value = '';
+  addChatMessage('user', text);
+
+  const endpoint = state.settings.gptEndpoint;
+  if(!endpoint){
+    addChatMessage('assistant', '請先到「設定」頁填寫你的中繼服務網址（Cloudflare Worker），才能開始跟我聊天喔。');
+    return;
+  }
+  document.getElementById('chatStatus').textContent = '● 思考中...';
+  showTyping();
+  try{
+    const recentMsgs = state.chatHistory.slice(-10).map(m=>({ role: m.role, content: m.content }));
+    const resp = await fetch(endpoint, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        messages: [
+          { role:'system', content: CHAT_SYSTEM_PROMPT + '\n\n' + buildChatContext() },
+          ...recentMsgs
+        ]
+      })
+    });
+    const data = await resp.json();
+    hideTyping();
+    const reply = data.reply || (data.choices && data.choices[0] && data.choices[0].message && data.choices[0].message.content) || '（沒有收到有效回覆，請確認中繼服務設定是否正確）';
+    addChatMessage('assistant', reply);
+  }catch(e){
+    hideTyping();
+    addChatMessage('assistant', '連線失敗了，請確認中繼服務網址是否正確，或稍後再試一次。');
+  }
+  document.getElementById('chatStatus').textContent = '● 待命中';
+}
+document.getElementById('chatSendBtn').onclick = sendChatMessage;
+document.getElementById('chatInput').addEventListener('keydown', e=>{
+  if(e.key==='Enter'){ e.preventDefault(); sendChatMessage(); }
+});
 
 /* ============================================================
    PWA：動態產生 manifest（單一檔案內嵌，無需外部檔案）

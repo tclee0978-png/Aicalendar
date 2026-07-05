@@ -926,18 +926,103 @@ function buildNavUrl({ destination, waypoints, mode }){
 function navigateToEvent(ev){
   if(!ev.address){ toast('這筆行程沒有填地址'); return; }
   const mode = state.settings.travelMode || 'driving';
-  window.open(buildNavUrl({ destination: ev.address, mode }), '_blank');
+  window.location.href = buildNavUrl({ destination: ev.address, mode });
 }
-function planTodayRoute(){
-  const mode = state.settings.travelMode || 'driving';
+function planTodayRoute(){ openRouteSheet(); }
+function openRouteSheet(){
   const t = todayStr();
-  const todays = state.events
+  const todaysWithAddr = state.events
     .filter(e=>e.date===t && e.address)
     .sort((a,b)=>(a.time||'').localeCompare(b.time||''));
-  if(!todays.length){ toast('今天還沒有填地址的行程，先去行程加上地址吧'); return; }
-  const dest = todays[todays.length-1].address;
-  const waypoints = todays.slice(0, -1).map(e=>e.address);
-  window.open(buildNavUrl({ destination: dest, waypoints, mode }), '_blank');
+  let extraStops = []; // {id, value}
+  let currentMode = state.settings.travelMode || 'driving';
+
+  function extraRowHTML(stop){
+    return `<div class="field" style="margin-bottom:8px;" data-extra-id="${stop.id}">
+      <div style="display:flex; gap:8px;">
+        <input id="extra_${stop.id}" style="flex:1;" value="${escapeHtml(stop.value)}" placeholder="輸入或語音/貼上地址">
+        <button type="button" class="field-icon-btn" data-mic="${stop.id}" title="語音輸入">🎙️</button>
+        <button type="button" class="field-icon-btn" data-paste="${stop.id}" title="貼上">📋</button>
+        <button type="button" class="field-icon-btn" data-remove="${stop.id}" title="移除">✕</button>
+      </div>
+    </div>`;
+  }
+
+  function render(){
+    const html = `
+      <div class="sheet-handle"></div>
+      <div class="sheet-title">🗺 規劃今日路線</div>
+      ${todaysWithAddr.length ? `
+      <div class="field">
+        <label>今天已排定的地點（可取消勾選）</label>
+        <div id="routeEventList">
+          ${todaysWithAddr.map(e=>`
+            <div class="settings-row" style="padding:8px 0;">
+              <label style="flex:1; display:flex; gap:8px; align-items:flex-start;">
+                <input type="checkbox" class="route-ev-check" data-id="${e.id}" checked style="margin-top:4px;">
+                <span>${e.time||''} ${escapeHtml(e.title)}<br><span style="font-size:11px;color:var(--text-2);">📍 ${escapeHtml(e.address)}</span></span>
+              </label>
+            </div>`).join('')}
+        </div>
+      </div>` : `<div class="empty-hint" style="margin-bottom:14px;">今天沒有已填地址的行程，可以在下面手動加地點</div>`}
+      <div class="field">
+        <label>額外地點（臨時要去的，不用先建行程）</label>
+        <div id="extraStopsWrap">${extraStops.map(extraRowHTML).join('')}</div>
+        <button type="button" class="btn btn-ghost" style="width:100%;margin-top:4px;" id="addExtraStopBtn">＋ 新增地點</button>
+      </div>
+      <div class="field">
+        <label>交通方式</label>
+        <div class="chip-group" id="routeModeChips">
+          <span class="chip ${currentMode==='driving'?'active':''}" data-v="driving">🚗 汽車</span>
+          <span class="chip ${currentMode==='two-wheeler'?'active':''}" data-v="two-wheeler">🏍 機車</span>
+        </div>
+      </div>
+      <button class="btn btn-primary" style="width:100%;" id="startRouteBtn">開始導航</button>
+    `;
+    openSheet(html);
+    bindEvents();
+  }
+
+  function bindEvents(){
+    document.getElementById('addExtraStopBtn').onclick = ()=>{
+      extraStops.forEach(s=>{ const el = document.getElementById('extra_'+s.id); if(el) s.value = el.value; });
+      extraStops.push({ id: uid(), value:'' });
+      render();
+    };
+    document.querySelectorAll('#extraStopsWrap [data-remove]').forEach(btn=>{
+      btn.onclick = ()=>{
+        extraStops.forEach(s=>{ const el = document.getElementById('extra_'+s.id); if(el) s.value = el.value; });
+        extraStops = extraStops.filter(s=>s.id!==btn.dataset.remove);
+        render();
+      };
+    });
+    document.querySelectorAll('#extraStopsWrap [data-mic]').forEach(btn=>{
+      btn.onclick = ()=> startFieldDictation('extra_'+btn.dataset.mic, btn);
+    });
+    document.querySelectorAll('#extraStopsWrap [data-paste]').forEach(btn=>{
+      btn.onclick = ()=> pasteFromClipboard('extra_'+btn.dataset.paste);
+    });
+    document.getElementById('routeModeChips').onclick = (e)=>{
+      const c = e.target.closest('.chip'); if(!c) return;
+      currentMode = c.dataset.v;
+      document.querySelectorAll('#routeModeChips .chip').forEach(x=> x.classList.toggle('active', x===c));
+    };
+    document.getElementById('startRouteBtn').onclick = ()=>{
+      extraStops.forEach(s=>{ const el = document.getElementById('extra_'+s.id); if(el) s.value = el.value.trim(); });
+      const checkedIds = [...document.querySelectorAll('.route-ev-check:checked')].map(c=>c.dataset.id);
+      const fromEvents = todaysWithAddr.filter(e=>checkedIds.includes(e.id)).map(e=>e.address);
+      const fromExtra = extraStops.map(s=>s.value).filter(Boolean);
+      const all = [...fromEvents, ...fromExtra];
+      if(!all.length){ toast('至少要有一個地點才能導航'); return; }
+      state.settings.travelMode = currentMode; saveState();
+      const dest = all[all.length-1];
+      const waypoints = all.slice(0, -1);
+      closeSheet();
+      window.location.href = buildNavUrl({ destination: dest, waypoints, mode: currentMode });
+    };
+  }
+
+  render();
 }
 function renderTravelModeChips(){
   const mode = state.settings.travelMode || 'driving';
